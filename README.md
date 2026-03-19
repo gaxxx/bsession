@@ -9,13 +9,13 @@ Ships as a [Claude Code](https://claude.ai/claude-code) `/browser` skill — fet
 ### One-Line Install
 
 ```bash
-curl -fsSL https://gaxxx.me/bsession.sh | bash
+curl -fsSL https://raw.githubusercontent.com/gaxxx/bsession/main/install.sh | bash
 ```
 
 With options:
 ```bash
-curl -fsSL https://gaxxx.me/bsession.sh | bash -s -- --vnc-password secret
-curl -fsSL https://gaxxx.me/bsession.sh | bash -s -- --workspace ~/my-workspace
+curl -fsSL https://raw.githubusercontent.com/gaxxx/bsession/main/install.sh | bash -s -- --vnc-password secret
+curl -fsSL https://raw.githubusercontent.com/gaxxx/bsession/main/install.sh | bash -s -- --workspace ~/my-workspace
 ```
 
 ### Prerequisites
