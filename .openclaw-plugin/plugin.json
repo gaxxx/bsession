@@ -1,0 +1,24 @@
+{
+  "name": "bsession-browser",
+  "version": "1.0.0",
+  "description": "Browser automation skill — fetch data from websites, create recurring monitors, debug sessions. Runs Chrome in Docker with Cloudflare bypass and VNC access.",
+  "author": "gaxxx",
+  "homepage": "https://github.com/gaxxx/bsession",
+  "repository": "https://github.com/gaxxx/bsession",
+  "license": "MIT",
+  "keywords": [
+    "browser",
+    "automation",
+    "scraping",
+    "monitoring",
+    "cloudflare",
+    "chrome",
+    "docker",
+    "vnc",
+    "uscis"
+  ],
+  "skills": "skills",
+  "requires": {
+    "bins": ["docker"]
+  }
+}

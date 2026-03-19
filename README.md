@@ -49,9 +49,15 @@ bash .claude/skills/browser/scripts/install.sh --vnc-password secret
 bash .claude/skills/browser/scripts/install.sh --repo https://github.com/gaxxx/bsession.git
 ```
 
-Or from within Claude Code:
+Or from within Claude Code / OpenClaw:
 ```
 /browser setup
+```
+
+### Install from ClawHub (OpenClaw)
+
+```bash
+npx clawhub@latest install bsession-browser
 ```
 
 ### Verify
