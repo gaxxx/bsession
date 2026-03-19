@@ -192,10 +192,61 @@ Docker Container (agent-browser)
 ├── Fluxbox           window manager
 ├── x11vnc :5900      VNC server
 ├── noVNC :6080       web VNC proxy
+├── API :8080         HTTP API (container-to-container)
 └── Per session:
     ├── Chromium      own instance, CDP port, persistent profile
     └── Python script monitor/automation
 ```
+
+### Docker-to-Docker Access (HTTP API)
+
+If your agent (e.g., OpenClaw) runs inside Docker, it can't use `docker exec`. Instead, the agent-browser container exposes an HTTP API on port 8080.
+
+Add agent-browser to your agent's Docker network:
+
+```yaml
+# your-agent's docker-compose.yml
+services:
+  your-agent:
+    networks:
+      - bsession
+
+networks:
+  bsession:
+    external: true
+    name: bsession
+```
+
+Then call the API using `http://agent-browser:8080`:
+
+```bash
+# List sessions
+curl -X POST http://agent-browser:8080/run -d '{"command":"list"}'
+
+# Start Chrome
+curl -X POST http://agent-browser:8080/chrome/start -d '{"port":9222}'
+
+# Navigate
+curl -X POST http://agent-browser:8080/ab -d '{"port":9222,"command":"open","args":["https://example.com"]}'
+
+# Snapshot
+curl -X POST http://agent-browser:8080/ab -d '{"port":9222,"command":"snapshot"}'
+
+# Click / fill
+curl -X POST http://agent-browser:8080/ab -d '{"port":9222,"command":"click","args":["e5"]}'
+curl -X POST http://agent-browser:8080/ab -d '{"port":9222,"command":"fill","args":["e7","hello"]}'
+
+# Run a session
+curl -X POST http://agent-browser:8080/run -d '{"command":"run","args":["uscis-check"]}'
+
+# Stop Chrome
+curl -X POST http://agent-browser:8080/chrome/stop -d '{"port":9222}'
+
+# Health check
+curl http://agent-browser:8080/health
+```
+
+All responses are JSON with `stdout`, `stderr`, and `returncode`.
 
 ### How Sessions Work
 

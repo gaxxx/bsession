@@ -42,5 +42,10 @@ echo "  python3 /app/session.py run <id>"
 echo "  python3 /app/session.py list"
 echo ""
 
+# Start bsession HTTP API (for container-to-container access)
+python3 /app/lib/api.py &
+echo " API server running on port 8080"
+echo ""
+
 # Keep container alive
 exec tail -f /dev/null
