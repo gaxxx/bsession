@@ -1,5 +1,6 @@
 services:
   agent-browser:
+    image: ghcr.io/gaxxx/bsession:latest
     build: .
     container_name: agent-browser
     ports:

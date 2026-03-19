@@ -178,11 +178,18 @@ else
     info "No VNC password set (open access)."
 fi
 
-# ── Step 6: Build Docker image ───────────────────────────────────────
-info "Building agent-browser Docker image..."
+# ── Step 6: Pull or build Docker image ────────────────────────────────
 cd "$BSESSION_HOME"
-docker compose build
-info "Image built."
+IMAGE="ghcr.io/gaxxx/bsession:latest"
+
+info "Pulling pre-built image ($IMAGE)..."
+if docker pull "$IMAGE" 2>/dev/null; then
+    info "Image pulled."
+else
+    warn "Pull failed — building locally (this takes a few minutes)..."
+    docker compose build
+    info "Image built locally."
+fi
 
 # ── Step 7: Start container ──────────────────────────────────────────
 if [[ "$NO_START" == true ]]; then
