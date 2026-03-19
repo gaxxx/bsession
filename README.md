@@ -2,7 +2,7 @@
 
 Browser automation sessions running inside Docker. Each session gets its own Chrome instance managed via CDP, with Cloudflare bypass, persistent profiles, and VNC access for debugging.
 
-Ships as a [Claude Code](https://claude.ai/claude-code) `/browser` skill — fetch data from websites, create recurring monitors, or debug sessions from any repo.
+Ships as a `/browser` skill for [Claude Code](https://claude.ai/claude-code) and [OpenClaw](https://openclaw.ai) — fetch data from websites, create recurring monitors, or debug sessions from any repo.
 
 ## Setup
 
@@ -21,7 +21,7 @@ curl -fsSL https://raw.githubusercontent.com/gaxxx/bsession/main/install.sh | ba
 ### Prerequisites
 
 - [Docker](https://docs.docker.com/get-docker/)
-- [Claude Code](https://claude.ai/claude-code)
+- [Claude Code](https://claude.ai/claude-code) or [OpenClaw](https://openclaw.ai)
 
 ### Manual Install
 
@@ -31,14 +31,16 @@ cd bsession
 bash .claude/skills/browser/scripts/install.sh
 ```
 
-This installs bsession globally to `~/.bsession/` and registers the `/browser` skill in Claude Code. The installer handles:
+This installs bsession globally to `~/.bsession/` and registers the `/browser` skill for all supported platforms. The installer handles:
 
 1. [uv](https://github.com/astral-sh/uv) + Python 3.12 (if missing)
 2. Copy source to `~/.bsession/`
 3. Docker image build (Chromium + VNC + agent-browser)
 4. Container start
 5. `bsession` CLI symlinked to `~/.local/bin/`
-6. `/browser` skill installed to `~/.claude/skills/browser/`
+6. `/browser` skill installed for:
+   - **Claude Code** → `~/.claude/skills/browser/`
+   - **OpenClaw** → `~/.openclaw/workspace/skills/browser/`
 
 Options:
 ```bash
@@ -231,6 +233,7 @@ if is_cloudflare(snap):
 
 ```
 bsession/
+├── install.sh            # One-line bootstrap (curl | bash)
 ├── bsession              # CLI wrapper (bash → docker exec)
 ├── session.py            # Session manager (port allocation, lifecycle)
 ├── lib/browser.py        # Browser helpers (Chrome, snapshots, Cloudflare, webhooks)
@@ -239,8 +242,10 @@ bsession/
 ├── entrypoint.sh         # Starts Xvfb, Fluxbox, VNC, noVNC
 ├── .claude/skills/browser/
 │   ├── SKILL.md          # Claude Code skill definition
-│   └── scripts/
-│       └── install.sh    # Self-contained installer
+│   └── scripts/install.sh
+├── .openclaw/skills/browser/
+│   ├── SKILL.md          # OpenClaw skill definition
+│   └── scripts/install.sh
 └── workspace/            # Mounted at /workspace in container
     ├── conf/             # Session configs (.conf files)
     ├── scripts/          # Automation scripts (.py files)
