@@ -1,0 +1,48 @@
+version: "3.8"
+
+services:
+  openclaw-gateway:
+    image: ghcr.io/openclaw/openclaw:latest
+    container_name: openclaw-gateway
+    restart: unless-stopped
+    ports:
+      - "${OPENCLAW_GATEWAY_PORT:-18789}:18789"
+    environment:
+      - HOME=/home/node
+      - NODE_ENV=production
+    volumes:
+      - ${OPENCLAW_CONFIG_DIR:-~/.openclaw}:/home/node/.openclaw
+      - ${OPENCLAW_WORKSPACE_DIR:-~/.openclaw/workspace}:/home/node/.openclaw/workspace
+    command: ["node", "dist/index.js", "gateway", "--bind", "${OPENCLAW_GATEWAY_BIND:-lan}", "--port", "18789", "--token", "${OPENCLAW_GATEWAY_TOKEN}"]
+    user: "1000:1000"
+    networks:
+      - default
+
+  openclaw-cli:
+    image: ghcr.io/openclaw/openclaw:latest
+    environment:
+      - HOME=/home/node
+      - NODE_ENV=production
+    volumes:
+      - ${OPENCLAW_CONFIG_DIR:-~/.openclaw}:/home/node/.openclaw
+      - ${OPENCLAW_WORKSPACE_DIR:-~/.openclaw/workspace}:/home/node/.openclaw/workspace
+    entrypoint: ["node", "dist/index.js"]
+    user: "1000:1000"
+    profiles:
+      - cli
+    networks:
+      - default
+
+  agent-browser:
+    image: ghcr.io/gaxxx/bsession:latest
+    container_name: agent-browser
+    restart: unless-stopped
+    ports:
+      - "5900:5900"   # VNC
+      - "6080:6080"   # noVNC web
+    environment:
+      - DISPLAY=:99
+    volumes:
+      - ${OPENCLAW_WORKSPACE_DIR:-~/.openclaw/workspace}/bsession:/workspace
+    networks:
+      - default
