@@ -31,4 +31,6 @@ VOLUME ["/workspace"]
 # VNC port + noVNC web port
 EXPOSE 5900 6080
 
+LABEL org.opencontainers.image.source="https://github.com/gaxxx/bsession"
+
 ENTRYPOINT ["/app/entrypoint.sh"]
