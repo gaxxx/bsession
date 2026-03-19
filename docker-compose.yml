@@ -1,0 +1,14 @@
+services:
+  agent-browser:
+    build: .
+    container_name: agent-browser
+    ports:
+      - "5900:5900"   # VNC
+      - "6080:6080"   # noVNC web
+    volumes:
+      - ./workspace:/workspace
+    env_file:
+      - .env
+    environment:
+      - DISPLAY=:99
+    restart: unless-stopped
