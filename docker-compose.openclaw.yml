@@ -37,9 +37,14 @@ services:
     image: ghcr.io/gaxxx/bsession:latest
     container_name: agent-browser
     restart: unless-stopped
-    ports:
-      - "5900:5900"   # VNC
-      - "6080:6080"   # noVNC web
+    # No ports exposed to host — OpenClaw accesses everything via the shared network:
+    #   API:    http://agent-browser:8080
+    #   VNC:    agent-browser:5900
+    #   noVNC:  http://agent-browser:6080
+    # Uncomment to access from host browser:
+    # ports:
+    #   - "5900:5900"   # VNC
+    #   - "6080:6080"   # noVNC web
     environment:
       - DISPLAY=:99
     volumes:
