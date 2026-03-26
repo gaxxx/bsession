@@ -40,21 +40,21 @@ def ab_quiet(cdp_port, command, *args):
 # ── Snapshot parsing ──────────────────────────────────────────────────
 
 def find_ref(snapshot, pattern):
-    """Find the first [ref=xxx] on a line matching pattern (case-insensitive)."""
+    """Find the first ref=xxx on a line matching pattern (case-insensitive)."""
     for line in snapshot.splitlines():
         if re.search(pattern, line, re.IGNORECASE):
-            m = re.search(r'\[ref=(\w+)\]', line)
+            m = re.search(r'\bref=(\w+)', line)
             if m:
                 return m.group(1)
     return None
 
 
 def find_all_refs(snapshot, pattern):
-    """Find all [ref=xxx] on lines matching pattern."""
+    """Find all ref=xxx on lines matching pattern."""
     refs = []
     for line in snapshot.splitlines():
         if re.search(pattern, line, re.IGNORECASE):
-            m = re.search(r'\[ref=(\w+)\]', line)
+            m = re.search(r'\bref=(\w+)', line)
             if m:
                 refs.append(m.group(1))
     return refs
