@@ -1,0 +1,111 @@
+# Flight Price Monitor — bsession skill
+#
+# Monitors Google Flights for price changes on a specific route.
+# Google Flights is a heavy SPA — content loads asynchronously,
+# so this skill uses wait_for to poll until results appear.
+
+name: flight_price
+description: "Monitor Google Flights price for a route and notify on changes"
+version: "1.0.0"
+
+tags:
+  - monitor
+  - travel
+  - price
+
+tools_used:
+  - browser.navigate
+  - browser.find
+  - browser.fill
+  - browser.click
+  - browser.wait_for
+  - browser.extract
+  - browser.transform
+  - notify.webhook
+
+params:
+  - name: ORIGIN
+    description: "Departure airport code (e.g. SFO)"
+    required: true
+  - name: DESTINATION
+    description: "Arrival airport code (e.g. NRT)"
+    required: true
+  - name: DEPART_DATE
+    description: "Departure date (YYYY-MM-DD)"
+    required: true
+  - name: RETURN_DATE
+    description: "Return date (YYYY-MM-DD, empty for one-way)"
+    required: false
+    default: ""
+  - name: CHECK_INTERVAL
+    description: "Seconds between checks"
+    required: false
+    default: "3600"
+  - name: WEBHOOK_URL
+    description: "Webhook URL for price change alerts"
+    required: false
+    default: ""
+
+steps:
+  # 1. Build Google Flights URL with route params
+  #    Google Flights URL format: /travel/flights/SFO/NRT/2026-04-15
+  - action: navigate
+    url: "https://www.google.com/travel/flights?q=flights+from+{{ORIGIN}}+to+{{DESTINATION}}+on+{{DEPART_DATE}}"
+    wait: 5
+
+  # 2. Wait for flight results to load (SPA — content is async)
+  - action: wait_for
+    pattern: "(?i)\\$\\d|price|cheapest|best|stops?|nonstop"
+    timeout: 30
+    interval: 2
+
+  # 3. Take snapshot of loaded results
+  - action: snapshot
+    name: results_page
+
+  # 4. Extract cheapest price
+  - action: extract
+    name: raw_price
+    pattern: "\\$([\\d,]+)"
+    max_lines: 1
+
+  # 5. Clean up the price (strip commas)
+  - action: transform
+    name: cheapest_price
+    source: "{{raw_price}}"
+    operation: strip_chars
+    chars: ","
+
+  # 6. Extract airline/route info
+  - action: extract
+    name: airline_info
+    pattern: "(?i)text:.*?(nonstop|1 stop|2 stops|\\d+h \\d+m|United|Delta|American|Alaska|JetBlue|Southwest|Spirit|Frontier|ANA|JAL)"
+    max_lines: 3
+
+  # 7. Extract departure times
+  - action: extract
+    name: departure_info
+    pattern: "(?i)text:.*?(\\d{1,2}:\\d{2}\\s*(?:AM|PM))"
+    max_lines: 2
+
+result:
+  price: "{{cheapest_price}}"
+  raw_price: "{{raw_price}}"
+  airline: "{{airline_info}}"
+  departure: "{{departure_info}}"
+  route: "{{ORIGIN}} → {{DESTINATION}}"
+
+monitor:
+  interval: "{{CHECK_INTERVAL}}"
+  change_field: price
+  max_failures: 5
+  notify:
+    webhook: "{{WEBHOOK_URL}}"
+    payload:
+      session: "{{SESSION_NAME}}"
+      route: "{{ORIGIN}} → {{DESTINATION}}"
+      date: "{{DEPART_DATE}}"
+      previous_price: "{{_previous}}"
+      new_price: "{{cheapest_price}}"
+      airline: "{{airline_info}}"
+      timestamp: "{{_timestamp}}"

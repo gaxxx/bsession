@@ -1,0 +1,166 @@
+# Visa Appointment Slot Checker — bsession skill
+#
+# Checks a visa appointment scheduling site for available slots.
+# Many consulate sites (US, Canada, Schengen) use similar patterns:
+#   login → select location → select category → check calendar
+#
+# This skill targets the common pattern. Adapt URLs/selectors per site.
+
+name: visa_appointment
+description: "Check visa appointment availability and notify when slots open"
+version: "1.0.0"
+
+tags:
+  - monitor
+  - government
+  - appointment
+
+tools_used:
+  - browser.navigate
+  - browser.find
+  - browser.fill
+  - browser.click
+  - browser.select
+  - bypass.cloudflare
+  - notify.webhook
+
+params:
+  - name: LOGIN_URL
+    description: "Appointment system login page URL"
+    required: true
+  - name: USERNAME
+    description: "Login username/email"
+    required: true
+  - name: PASSWORD
+    description: "Login password"
+    required: true
+  - name: SCHEDULE_URL
+    description: "Direct URL to the scheduling page (after login)"
+    required: false
+    default: ""
+  - name: LOCATION
+    description: "Appointment location to select (text match)"
+    required: false
+    default: ""
+  - name: CHECK_INTERVAL
+    description: "Seconds between checks"
+    required: false
+    default: "300"
+  - name: WEBHOOK_URL
+    description: "Webhook URL for slot availability alerts"
+    required: false
+    default: ""
+
+steps:
+  # 1. Navigate to login page
+  - action: navigate
+    url: "{{LOGIN_URL}}"
+    wait: 8
+
+  # 2. Handle Cloudflare / protection
+  - action: bypass
+    type: cloudflare
+
+  - action: snapshot
+    name: login_page
+
+  # 3. Fill login form
+  - action: find
+    name: email_input
+    patterns:
+      - "textbox.*email"
+      - "textbox.*user"
+      - "text.*email"
+      - input
+
+  - action: fill
+    ref: "{{email_input}}"
+    value: "{{USERNAME}}"
+
+  - action: find
+    name: password_input
+    patterns:
+      - "textbox.*password"
+      - "text.*password"
+
+  - action: fill
+    ref: "{{password_input}}"
+    value: "{{PASSWORD}}"
+
+  # 4. Submit login
+  - action: find
+    name: login_button
+    patterns:
+      - "button.*[Ss]ign [Ii]n"
+      - "button.*[Ll]og [Ii]n"
+      - "button.*[Ss]ubmit"
+
+  - action: click
+    ref: "{{login_button}}"
+    wait: 8
+
+  # 5. Check for login failure
+  - action: snapshot
+    name: post_login
+
+  - action: check
+    snapshot_pattern: "(?i)dashboard|schedule|appointment|welcome|continue"
+    error: "Login failed — check credentials or CAPTCHA required"
+
+  # 6. Navigate to scheduling page (if direct URL provided)
+  - action: navigate
+    url: "{{SCHEDULE_URL}}"
+    wait: 5
+
+  # 7. Select location if needed
+  - action: snapshot
+    name: schedule_page
+
+  - action: find
+    name: location_select
+    optional: true
+    patterns:
+      - "combobox.*location"
+      - "combobox.*city"
+      - "listbox.*location"
+      - "select.*location"
+
+  - action: select
+    ref: "{{location_select}}"
+    value: "{{LOCATION}}"
+    skip_if_empty: true
+
+  - action: wait
+    seconds: 3
+
+  # 8. Extract available dates/slots
+  - action: snapshot
+    name: calendar_page
+
+  - action: extract
+    name: available_dates
+    pattern: "(?i)(?:available|open|book).*?(\\d{1,2}[/-]\\d{1,2}[/-]\\d{2,4}|january|february|march|april|may|june|july|august|september|october|november|december)"
+    max_lines: 5
+
+  - action: extract
+    name: slot_status
+    pattern: "(?i)text:.*?(no.*(?:available|appointment)|appointments? available|earliest.*date|next available)"
+    max_lines: 3
+
+result:
+  available_dates: "{{available_dates}}"
+  status: "{{slot_status}}"
+
+monitor:
+  interval: "{{CHECK_INTERVAL}}"
+  change_field: available_dates
+  max_failures: 5
+  notify:
+    webhook: "{{WEBHOOK_URL}}"
+    payload:
+      session: "{{SESSION_NAME}}"
+      previous: "{{_previous}}"
+      available_dates: "{{available_dates}}"
+      status: "{{slot_status}}"
+      url: "{{LOGIN_URL}}"
+      timestamp: "{{_timestamp}}"

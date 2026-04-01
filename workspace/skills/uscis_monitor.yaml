@@ -1,0 +1,115 @@
+# USCIS Case Status Monitor — bsession skill
+# Migrated from workspace/scripts/uscis.py
+#
+# Checks USCIS case status periodically, detects changes, sends webhooks.
+
+name: uscis_monitor
+description: "Check USCIS case status and notify on changes"
+version: "1.0.0"
+
+tags:
+  - monitor
+  - immigration
+  - government
+
+tools_used:
+  - browser.navigate
+  - browser.find
+  - browser.fill
+  - browser.click
+  - bypass.cloudflare
+  - notify.webhook
+
+params:
+  - name: RECEIPT_NUMBER
+    description: "USCIS receipt number (e.g. IOE0000000000)"
+    required: true
+  - name: CHECK_INTERVAL
+    description: "Seconds between checks"
+    required: false
+    default: "3600"
+  - name: N8N_WEBHOOK_URL
+    description: "Webhook URL for status change alerts"
+    required: false
+    default: ""
+
+steps:
+  # 1. Open the USCIS case status page
+  - action: navigate
+    url: "https://egov.uscis.gov/casestatus/mycasestatus.do"
+    wait: 8
+
+  # 2. Handle Cloudflare protection if present
+  - action: bypass
+    type: cloudflare
+
+  # 3. Take a fresh snapshot after bypass
+  - action: wait
+    seconds: 3
+
+  - action: snapshot
+    name: form_page
+
+  # 4. Find the receipt number input field
+  - action: find
+    name: receipt_input
+    patterns:
+      - textbox
+      - "text.*receipt"
+      - input
+
+  # 5. Enter the receipt number
+  - action: fill
+    ref: "{{receipt_input}}"
+    value: "{{RECEIPT_NUMBER}}"
+
+  - action: wait
+    seconds: 1
+
+  # 6. Find and click Check Status button
+  - action: snapshot
+    name: filled_form
+
+  - action: find
+    name: submit_button
+    patterns:
+      - "[Cc]heck [Ss]tatus"
+      - "button.*[Ss]ubmit"
+      - "button.*[Cc]heck"
+
+  - action: click
+    ref: "{{submit_button}}"
+    wait: 5
+
+  # 7. Extract the result
+  - action: snapshot
+    name: result_page
+
+  - action: extract
+    name: status_title
+    pattern: 'heading "Case ([^"]*)"'
+    exclude: "Status Online"
+    max_lines: 1
+
+  - action: extract
+    name: status_detail
+    pattern: "text:.*(?:Form I-|approved|received|denied|transferred|petition)"
+    max_lines: 3
+
+result:
+  title: "{{status_title}}"
+  detail: "{{status_detail}}"
+
+monitor:
+  interval: "{{CHECK_INTERVAL}}"
+  change_field: title
+  max_failures: 5
+  notify:
+    webhook: "{{N8N_WEBHOOK_URL}}"
+    payload:
+      session: "{{SESSION_NAME}}"
+      receipt: "{{RECEIPT_NUMBER}}"
+      previous_status: "{{_previous}}"
+      new_status: "{{status_title}}"
+      detail: "{{status_detail}}"
+      timestamp: "{{_timestamp}}"

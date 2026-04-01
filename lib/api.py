@@ -12,16 +12,40 @@ Endpoints:
   POST /ab           {"port": 9222, "command": "click", "args": ["e5"]}
   POST /chrome/start {"port": 9222, "profile": "/workspace/data/profile-tmp"}
   POST /chrome/stop  {"port": 9222}
+  GET  /screenshot?port=9222        — PNG of the active tab (by CDP port)
+  GET  /screenshot/<session_id>     — PNG of the active tab (by session name)
+  GET  /skills                      — list available skills
+  GET  /eval/<session_id>           — run history and summary stats
   GET  /health
 """
 
 import json
+import re
 import subprocess
 import sys
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from urllib.parse import urlparse, parse_qs
 
 sys.path.insert(0, "/app")
-from lib.browser import start_chrome, stop_chrome, chrome_alive
+from lib.browser import start_chrome, stop_chrome, chrome_alive, capture_screenshot
+
+
+DB_PATH = "/workspace/data/ports.db"
+
+
+def _lookup_port(session_id: str) -> int | None:
+    """Resolve a session name to its CDP port from the SQLite registry."""
+    import sqlite3
+    db_path = DB_PATH
+    try:
+        db = sqlite3.connect(db_path)
+        row = db.execute(
+            "SELECT port FROM ports WHERE session_id = ?", (session_id,)
+        ).fetchone()
+        db.close()
+        return row[0] if row else None
+    except Exception:
+        return None
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -31,15 +55,85 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(json.dumps(data).encode())
 
+    def _png_response(self, png_bytes: bytes):
+        self.send_response(200)
+        self.send_header("Content-Type", "image/png")
+        self.send_header("Content-Length", str(len(png_bytes)))
+        self.send_header("Cache-Control", "no-cache")
+        self.end_headers()
+        self.wfile.write(png_bytes)
+
     def _read_body(self):
         length = int(self.headers.get("Content-Length", 0))
         return json.loads(self.rfile.read(length)) if length else {}
 
     def do_GET(self):
-        if self.path == "/health":
+        parsed = urlparse(self.path)
+
+        if parsed.path == "/health":
             self._json_response(200, {"status": "ok"})
+
+        elif parsed.path.startswith("/screenshot"):
+            try:
+                port = self._resolve_screenshot_port(parsed)
+                if port is None:
+                    self._json_response(404, {"error": "session not found or no port assigned"})
+                    return
+                png_data = capture_screenshot(port)
+                self._png_response(png_data)
+            except Exception as e:
+                self._json_response(500, {"error": str(e)})
+
+        elif parsed.path == "/skills":
+            try:
+                from lib.skill import list_skills
+                self._json_response(200, {"skills": list_skills()})
+            except Exception as e:
+                self._json_response(500, {"error": str(e)})
+
+        elif parsed.path.startswith("/eval/"):
+            try:
+                session_id = parsed.path.split("/eval/", 1)[1]
+                from lib.eval import EvalRecorder
+                recorder = EvalRecorder()
+                qs = parse_qs(parsed.query)
+                limit = int(qs.get("limit", [20])[0])
+                summary = recorder.get_summary(session_id)
+                runs = recorder.get_runs(session_id, limit=limit)
+                self._json_response(200, {
+                    "session_id": session_id,
+                    "summary": {
+                        "total_runs": summary.total_runs,
+                        "success_rate": summary.success_rate,
+                        "avg_duration_ms": summary.avg_duration_ms,
+                        "p95_duration_ms": summary.p95_duration_ms,
+                        "last_error": summary.last_error,
+                        "last_run": summary.last_run,
+                    },
+                    "runs": runs,
+                })
+            except Exception as e:
+                self._json_response(500, {"error": str(e)})
+
         else:
             self._json_response(404, {"error": "not found"})
+
+    def _resolve_screenshot_port(self, parsed) -> int | None:
+        """Resolve CDP port from query param or URL path segment.
+
+        GET /screenshot?port=9222       → use port directly
+        GET /screenshot/<session_id>    → look up port from DB
+        """
+        qs = parse_qs(parsed.query)
+        if "port" in qs:
+            return int(qs["port"][0])
+
+        # Extract session_id from path: /screenshot/uscis
+        match = re.match(r"^/screenshot/([a-zA-Z0-9_-]+)$", parsed.path)
+        if match:
+            return _lookup_port(match.group(1))
+
+        return None
 
     def do_POST(self):
         try:
@@ -88,6 +182,58 @@ class Handler(BaseHTTPRequestHandler):
                 port = body.get("port", 9222)
                 alive = chrome_alive(port)
                 self._json_response(200, {"alive": alive, "port": port})
+
+            # ── Browser tool endpoints (for algo-esc / OpenClaw) ─────
+            elif self.path == "/browse":
+                port = body.get("port", 9222)
+                url = body.get("url", "about:blank")
+                wait = body.get("wait", 5)
+                subprocess.run(
+                    ["agent-browser", "--cdp", str(port), "open", url],
+                    capture_output=True, timeout=30,
+                )
+                import time; time.sleep(wait)
+                snap = subprocess.run(
+                    ["agent-browser", "--cdp", str(port), "snapshot"],
+                    capture_output=True, text=True, timeout=30,
+                )
+                self._json_response(200, {"url": url, "snapshot": snap.stdout})
+
+            elif self.path == "/click":
+                port = body.get("port", 9222)
+                ref = body.get("ref", "")
+                subprocess.run(
+                    ["agent-browser", "--cdp", str(port), "click", ref],
+                    capture_output=True, timeout=30,
+                )
+                import time; time.sleep(1)
+                snap = subprocess.run(
+                    ["agent-browser", "--cdp", str(port), "snapshot"],
+                    capture_output=True, text=True, timeout=30,
+                )
+                self._json_response(200, {"clicked": ref, "snapshot": snap.stdout})
+
+            elif self.path == "/fill":
+                port = body.get("port", 9222)
+                ref = body.get("ref", "")
+                value = body.get("value", "")
+                subprocess.run(
+                    ["agent-browser", "--cdp", str(port), "clear", ref],
+                    capture_output=True, timeout=30,
+                )
+                subprocess.run(
+                    ["agent-browser", "--cdp", str(port), "fill", ref, value],
+                    capture_output=True, timeout=30,
+                )
+                self._json_response(200, {"filled": ref})
+
+            elif self.path == "/snapshot":
+                port = body.get("port", 9222)
+                snap = subprocess.run(
+                    ["agent-browser", "--cdp", str(port), "snapshot"],
+                    capture_output=True, text=True, timeout=30,
+                )
+                self._json_response(200, {"snapshot": snap.stdout})
 
             else:
                 self._json_response(404, {"error": "not found"})

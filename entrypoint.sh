@@ -7,7 +7,7 @@ echo "========================================="
 echo ""
 
 # Ensure workspace directories exist
-mkdir -p /workspace/conf /workspace/data /workspace/scripts
+mkdir -p /workspace/conf /workspace/data /workspace/scripts /workspace/skills
 
 # Start virtual display
 export DISPLAY=:99

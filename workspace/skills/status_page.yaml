@@ -1,0 +1,79 @@
+# Status Page Monitor — bsession skill
+#
+# Monitors any public status page (GitHub, AWS, Cloudflare, etc.)
+# for incidents. The simplest possible skill: navigate → extract → diff.
+
+name: status_page
+description: "Monitor a status page for incidents and outages"
+version: "1.0.0"
+
+tags:
+  - monitor
+  - infrastructure
+  - status
+
+tools_used:
+  - browser.navigate
+  - browser.extract
+  - notify.webhook
+
+params:
+  - name: STATUS_URL
+    description: "URL of the status page"
+    required: true
+  - name: CHECK_INTERVAL
+    description: "Seconds between checks"
+    required: false
+    default: "300"
+  - name: WEBHOOK_URL
+    description: "Webhook URL for status change alerts"
+    required: false
+    default: ""
+
+steps:
+  # 1. Navigate to status page
+  - action: navigate
+    url: "{{STATUS_URL}}"
+    wait: 5
+
+  # 2. Take snapshot
+  - action: snapshot
+    name: status_page
+
+  # 3. Extract overall status indicator
+  #    Most status pages show a prominent "All Systems Operational" or similar
+  - action: extract
+    name: overall_status
+    pattern: "(?i)text:.*?(all systems operational|major outage|partial outage|degraded performance|under maintenance|minor.*issue|operational|disruption|incident)"
+    max_lines: 1
+
+  # 4. Extract any active incidents
+  - action: extract
+    name: active_incidents
+    pattern: "(?i)text:.*?(investigating|identified|monitoring|resolved|update -|incident -).*"
+    max_lines: 5
+
+  # 5. Extract component statuses if available
+  - action: extract
+    name: component_status
+    pattern: "(?i)text:.*?(operational|degraded|partial|major|maintenance)$"
+    max_lines: 10
+
+result:
+  status: "{{overall_status}}"
+  incidents: "{{active_incidents}}"
+  components: "{{component_status}}"
+
+monitor:
+  interval: "{{CHECK_INTERVAL}}"
+  change_field: status
+  max_failures: 5
+  notify:
+    webhook: "{{WEBHOOK_URL}}"
+    payload:
+      session: "{{SESSION_NAME}}"
+      url: "{{STATUS_URL}}"
+      previous_status: "{{_previous}}"
+      new_status: "{{overall_status}}"
+      incidents: "{{active_incidents}}"
+      timestamp: "{{_timestamp}}"

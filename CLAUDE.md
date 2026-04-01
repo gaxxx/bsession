@@ -1,15 +1,15 @@
 # Project Overview
 
-Browser automation monitors running inside a Docker container with `agent-browser`, Chromium, and VNC. Each monitor gets its own Chrome instance managed by a Python session manager (`bsession`).
+Browser automation engine running inside a Docker container with `agent-browser`, Chromium, and VNC. Automations are defined as **skills** (declarative YAML) executed by a **toolset** (typed browser/bypass/notify wrappers), with **eval** tracking run metrics.
 
 ## Stack
 
 - **Runtime**: Node 22-slim Docker image with Chromium + Python 3
 - **Browser Control**: `agent-browser` CLI (Playwright-based, talks to Chrome via CDP)
 - **Display**: Xvfb (virtual framebuffer) + Fluxbox + x11vnc + noVNC (web VNC at port 6080)
-- **Session Manager**: `session.py` — baked into Docker image, manages Chrome + monitor lifecycle
-- **Port Allocation**: SQLite (`/workspace/data/ports.db`) — auto-assigns CDP ports unless explicitly set in conf
-- **Monitors**: Python scripts in `workspace/scripts/` using `/app/lib/browser.py`
+- **Session Manager**: `session.py` — manages Chrome + skill/script lifecycle
+- **Skill Engine**: YAML skill definitions → toolset → runner → eval
+- **Port Allocation**: SQLite (`/workspace/data/ports.db`) — auto-assigns CDP ports
 - **Notifications**: Webhooks (configurable URL)
 
 ## Project Structure
@@ -17,120 +17,239 @@ Browser automation monitors running inside a Docker container with `agent-browse
 ```
 ├── bsession              # Client-side CLI wrapper (runs session.py inside container)
 ├── session.py            # Session manager (baked into image at /app/)
+├── run_skill.py          # Subprocess entry point for skill execution
 ├── lib/
-│   └── browser.py        # Shared browser helpers (baked into image at /app/lib/)
+│   ├── browser.py        # Core agent-browser CLI wrapper + snapshot parsing
+│   ├── chrome.py         # Chrome lifecycle (start, stop, stealth)
+│   ├── bypass/
+│   │   ├── __init__.py
+│   │   └── cloudflare.py # 3-tier Cloudflare Turnstile bypass
+│   ├── notify.py         # Webhook helpers
+│   ├── api.py            # HTTP API (port 8080)
+│   ├── toolset.py        # Typed tool wrappers (browser, bypass, notify, chrome, screenshot)
+│   ├── skill.py          # Skill data model (YAML loader, variable resolution)
+│   ├── runner.py         # Skill step executor + monitor loop
+│   ├── eval.py           # SQLite run metrics recorder
+│   └── builder.py        # Skill scaffolding + Claude/OpenClaw export
 ├── Dockerfile
-├── docker-compose.yml    # Mounts ./workspace:/workspace
-├── entrypoint.sh         # Starts Xvfb, Fluxbox, VNC, noVNC, ensures workspace dirs
+├── docker-compose.yml
+├── entrypoint.sh
 └── workspace/            # Mounted at /workspace — user content only
-    ├── conf/             # Session conf files (INI format, user-managed)
+    ├── conf/             # Session conf files (INI format)
     │   └── uscis.conf
+    ├── skills/           # Skill definitions (YAML)
+    │   └── uscis_monitor.yaml
     ├── data/             # Runtime data (persists across restarts)
-    │   ├── ports.db      # SQLite port registry
-    │   ├── pids/         # PID files: {id}.chrome.pid, {id}.script.pid
-    │   ├── logs/         # Monitor logs: {id}.log
-    │   ├── profile-*/    # Chrome profiles (cookies, cache)
-    │   └── stealth-ext/  # Chrome extension (patches navigator.webdriver)
-    └── scripts/          # User monitor scripts
-        └── uscis.py      # USCIS case status monitor
+    │   ├── ports.db      # SQLite: port registry + run metrics
+    │   ├── pids/         # PID files
+    │   ├── logs/         # Session logs
+    │   ├── profile-*/    # Chrome profiles
+    │   └── stealth-ext/  # Anti-detection extension
+    └── scripts/          # Legacy monitor scripts
+        └── uscis.py
 ```
 
 ## Architecture
+
+### Skill System (3 layers)
+
+```
+Skills (YAML)         ← what: declarative automation definitions
+  workspace/skills/     navigate → bypass → find → fill → click → extract
+
+Toolset (Python)      ← how: typed wrappers around browser primitives
+  lib/toolset.py        tools.browser.click(ref), tools.bypass.cloudflare()
+
+Engine (Python)       ← run: step executor + monitor loop + eval
+  lib/runner.py         walk steps, resolve {{vars}}, track state
+  lib/eval.py           record success/failure/duration per run
+```
+
+### Skill Format (YAML)
+
+```yaml
+name: my_monitor
+description: "What this skill does"
+version: "1.0.0"
+params:
+  - name: MY_PARAM
+    description: "Required input"
+    required: true
+steps:
+  - action: navigate
+    url: "https://example.com"
+    wait: 5
+  - action: bypass
+    type: cloudflare
+  - action: find
+    name: my_input
+    patterns: [textbox, "input.*name"]
+  - action: fill
+    ref: "{{my_input}}"
+    value: "{{MY_PARAM}}"
+  - action: click
+    ref: "{{submit_button}}"
+    wait: 5
+  - action: extract
+    name: result_text
+    pattern: 'heading "([^"]*)"'
+result:
+  title: "{{result_text}}"
+monitor:                    # optional: run as recurring monitor
+  interval: "3600"
+  change_field: title
+  notify:
+    webhook: "{{WEBHOOK_URL}}"
+```
+
+### Step Actions
+
+| Action | Params | Description |
+|--------|--------|-------------|
+| `navigate` | `url`, `wait` | Open URL, wait for load |
+| `bypass` | `type` (cloudflare) | Handle protection pages |
+| `find` | `name`, `patterns`, `optional` | Find element ref by trying patterns |
+| `fill` | `ref`, `value` | Clear + fill input field |
+| `clear` | `ref` | Clear input field |
+| `click` | `ref`, `wait` | Click element |
+| `type` | `ref`, `value` | Type text character by character |
+| `select` | `ref`, `value`, `skip_if_empty` | Select dropdown option by text |
+| `extract` | `name`, `pattern`, `exclude`, `max_lines` | Regex extract from snapshot |
+| `wait` | `seconds` | Sleep |
+| `wait_for` | `pattern`, `timeout`, `interval` | Poll until pattern appears in snapshot |
+| `transform` | `name`, `source`, `operation`, ... | Transform a value (strip, replace, regex_extract, strip_chars) |
+| `snapshot` | `name` | Take + store a snapshot |
+| `check` | `snapshot_pattern`, `error` | Assert condition |
+
+### Toolset API
+
+```python
+tools.browser.navigate(url, wait=3)
+tools.browser.snapshot() -> str
+tools.browser.click(ref)
+tools.browser.fill(ref, value)
+tools.browser.find_first(snapshot, patterns) -> str | None
+tools.bypass.is_cloudflare(snapshot) -> bool
+tools.bypass.cloudflare(snapshot, max_wait=300) -> bool
+tools.bypass.is_blocked(snapshot) -> bool
+tools.notify.webhook(url, payload) -> bool
+tools.chrome.alive() -> bool
+tools.screenshot.capture() -> bytes
+```
+
+### Skill Builder Workflow (5 steps)
+
+1. **Name & describe**: `bsession skill create my_skill -d "description"`
+2. **Define steps**: Edit the generated YAML in `workspace/skills/my_skill.yaml`
+3. **Run & test**: `bsession skill run my_skill` — executes once, shows result
+4. **Export**: `bsession skill export my_skill -f claude` or `-f openclaw`
+5. **Iterate**: Check eval with `bsession skill eval my_skill`, update YAML
 
 ### Container Startup
 
 ```
 docker compose up -d
   → entrypoint.sh:
-    1. mkdir -p /workspace/{conf,data,scripts}
-    2. Xvfb :99 (1280x900 virtual screen)
-    3. Fluxbox (window manager)
-    4. x11vnc on :5900
-    5. noVNC on :6080 (web proxy → VNC)
-    6. tail -f /dev/null (keep alive)
+    1. mkdir -p /workspace/{conf,data,scripts,skills}
+    2. Xvfb :99, Fluxbox, x11vnc, noVNC
+    3. API server on port 8080
+    4. tail -f /dev/null (keep alive)
 ```
-
-Container provides display infrastructure. No monitors run until you start them.
 
 ### Session Lifecycle
 
-Sessions are defined by `.conf` files in `workspace/conf/`. No `add`/`remove` commands — just create or delete conf files directly.
+Sessions are defined by `.conf` files in `workspace/conf/`. Conf supports both `skill` and `script` modes:
+
+```ini
+# Skill-based (recommended)
+[session]
+skill = uscis_monitor
+
+[env]
+RECEIPT_NUMBER = IOE0000000000
+CHECK_INTERVAL = 1800
+
+# Legacy script-based
+[session]
+script = /workspace/scripts/uscis.py
+
+[env]
+RECEIPT_NUMBER = IOE0000000000
+```
 
 ```
-bsession run <id>     → resolve port (SQLite) → start Chrome → launch monitor script
-bsession stop <id>    → kill monitor process group + Chrome
+bsession run <id>     → resolve port → start Chrome → launch skill/script
+bsession stop <id>    → kill process group + Chrome
 bsession restart <id> → stop + start
 ```
 
-### Port Resolution (`resolve_port`)
+### Eval System
 
-1. **Explicit in conf** — if `[session]` has `port = 9225`, use that
-2. **Already in DB** — if this session ran before, reuse its port
-3. **Auto-assign** — next available starting from 9222
+Run metrics stored in `ports.db`:
 
-### `bsession run` in Detail
-
-1. **Start Chrome** (`lib/browser.py:start_chrome`):
-   - Kill any existing Chrome on that CDP port
-   - Remove stale profile locks (`SingletonLock`, etc.)
-   - Create stealth extension if needed
-   - Launch `/usr/lib/chromium/chromium` with stealth flags
-   - Poll `http://localhost:{port}/json/version` until CDP responds
-   - Get actual PID via `pgrep`
-
-2. **Launch monitor** as detached subprocess:
-   - Export `[env]` vars, then set `CDP_PORT` (from SQLite, always wins) and `SESSION_NAME`
-   - `subprocess.Popen([python3, script], start_new_session=True)`
-   - stdout/stderr → `/workspace/data/logs/{id}.log`
-
-### Cloudflare Bypass Strategy (3 tiers)
-
-1. **CDP iframe click** (most reliable): Find Turnstile iframe `[ref=eXX]` in snapshot → `ab("click", ref)`
-2. **xdotool** (fallback): Real X11 mouse events, simulates human-like movement
-3. **Manual VNC** (last resort): Polls every 5s for 300s while user solves at `http://localhost:6080/vnc.html`
-
-### Anti-Detection
-
-- **No `--enable-automation` flag** — Chrome launched manually
-- **`--disable-blink-features=AutomationControlled`** — removes automation banner
-- **Stealth extension** (`/workspace/data/stealth-ext/`): patches `navigator.webdriver`
-- **Persistent browser profile** — Cloudflare cookies survive restarts
-
-## Session Manager Usage
-
-```bash
-# Create a conf file (workspace/conf/uscis.conf):
-#   [session]
-#   script = /workspace/scripts/uscis.py
-#
-#   [env]
-#   RECEIPT_NUMBER = IOE0000000000
-#   CHECK_INTERVAL = 1800
-
-# Manage sessions
-./bsession list                    # show all sessions with status/port
-./bsession show uscis              # show conf + assigned port
-./bsession run uscis               # start Chrome + monitor
-./bsession run all                 # start all sessions
-./bsession stop uscis              # stop Chrome + monitor
-./bsession stop all                # stop everything
-./bsession restart uscis           # stop + start
-./bsession logs uscis -n 100       # tail logs
+```
+bsession skill eval uscis
+  Session: uscis
+  Total runs:    47
+  Success rate:  93.6%
+  Avg duration:  12340ms
+  P95 duration:  18200ms
+  Last error:    Cloudflare bypass failed
 ```
 
-## Environment Variables
+## CLI Reference
 
-Defined in `.env` (passed into container):
+```bash
+# Session management
+./bsession list                          # show all sessions
+./bsession run uscis                     # start (skill or script)
+./bsession stop uscis                    # stop
+./bsession restart uscis                 # restart
+./bsession logs uscis -n 100             # tail logs
 
-- `VNC_PASSWORD` — Optional VNC password
+# Skill builder
+./bsession skill list                    # list available skills
+./bsession skill create price_watch      # scaffold new skill YAML
+./bsession skill show uscis_monitor      # show skill details
+./bsession skill run uscis_monitor       # test run (once)
+./bsession skill eval uscis              # show run history + stats
+./bsession skill export uscis_monitor -f claude    # export as Claude skill
+./bsession skill export uscis_monitor -f openclaw  # export as OpenClaw tool
+```
 
-Per-session config goes in the conf file's `[env]` section (e.g. `RECEIPT_NUMBER`, `CHECK_INTERVAL`, `N8N_WEBHOOK_URL`).
+## HTTP API (port 8080)
+
+```
+POST /run          {"command": "list|run|stop", "args": ["session_id"]}
+POST /ab           {"port": 9222, "command": "snapshot|click|open", "args": [...]}
+POST /chrome/start {"port": 9222, "profile": "..."}
+POST /chrome/stop  {"port": 9222}
+GET  /screenshot/<session_id>    — PNG of active tab
+GET  /screenshot?port=9222       — PNG by CDP port
+GET  /skills                     — list available skills (JSON)
+GET  /eval/<session_id>          — run history + summary (JSON)
+GET  /health
+```
 
 ## Key Conventions
 
 - `lib/browser.py` wraps `agent-browser` CLI: `ab(port, "snapshot")`, `ab_quiet(port, "click", ref)`
 - `find_ref(snapshot, pattern)` — regex search on accessibility tree lines, extracts `[ref=xxx]`
 - Each session: own Chrome instance, CDP port, browser profile, log file
-- Monitors import from `/app/lib/browser.py` via `sys.path.insert(0, "/app")`
-- Monitors read all config from env vars (set by `session.py run`)
-- Logs go to `/workspace/data/logs/{session_id}.log` (captured stdout)
+- Skills use `{{variable}}` syntax for parameter interpolation
+- Toolset is bound to a CDP port at construction — skills never see port numbers
+- Eval records every run automatically (success/failure/duration/error)
+- Legacy scripts still work via `script = ...` in conf files
+
+## Anti-Detection
+
+- **No `--enable-automation` flag** — Chrome launched manually
+- **`--disable-blink-features=AutomationControlled`** — removes automation banner
+- **Stealth extension** (`/workspace/data/stealth-ext/`): patches `navigator.webdriver`
+- **Persistent browser profile** — Cloudflare cookies survive restarts
+
+## Cloudflare Bypass Strategy (3 tiers)
+
+1. **CDP iframe click** (most reliable): Find Turnstile iframe in snapshot → click ref
+2. **xdotool** (fallback): Real X11 mouse events with human-like movement
+3. **Manual VNC** (last resort): Polls while user solves at `http://localhost:6080/vnc.html`
