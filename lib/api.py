@@ -14,6 +14,10 @@ Endpoints:
   POST /chrome/stop  {"port": 9222}
   GET  /screenshot?port=9222        — PNG of the active tab (by CDP port)
   GET  /screenshot/<session_id>     — PNG of the active tab (by session name)
+  GET  /captcha/screenshot?port=9222         — PNG of captcha area (by CDP port)
+  GET  /captcha/screenshot/<session_id>      — PNG of captcha area (by session name)
+  GET  /captcha/bounds?port=9222             — captcha bounding box JSON
+  GET  /captcha/bounds/<session_id>          — captcha bounding box JSON
   GET  /skills                      — list available skills
   GET  /eval/<session_id>           — run history and summary stats
   GET  /health
@@ -28,6 +32,7 @@ from urllib.parse import urlparse, parse_qs
 
 sys.path.insert(0, "/app")
 from lib.browser import start_chrome, stop_chrome, chrome_alive, capture_screenshot
+from lib.captcha import find_captcha_bounds, capture_captcha_screenshot
 
 
 DB_PATH = "/workspace/data/ports.db"
@@ -84,6 +89,35 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:
                 self._json_response(500, {"error": str(e)})
 
+        elif parsed.path.startswith("/captcha/screenshot"):
+            try:
+                port = self._resolve_screenshot_port(parsed)
+                if port is None:
+                    self._json_response(404, {"error": "session not found or no port assigned"})
+                    return
+                qs = parse_qs(parsed.query)
+                padding = int(qs.get("padding", [10])[0])
+                png_data = capture_captcha_screenshot(port, padding=padding)
+                self._png_response(png_data)
+            except RuntimeError as e:
+                self._json_response(404, {"error": str(e)})
+            except Exception as e:
+                self._json_response(500, {"error": str(e)})
+
+        elif parsed.path.startswith("/captcha/bounds"):
+            try:
+                port = self._resolve_screenshot_port(parsed)
+                if port is None:
+                    self._json_response(404, {"error": "session not found or no port assigned"})
+                    return
+                bounds = find_captcha_bounds(port)
+                if bounds is None:
+                    self._json_response(404, {"error": "no captcha element found"})
+                    return
+                self._json_response(200, {"bounds": bounds})
+            except Exception as e:
+                self._json_response(500, {"error": str(e)})
+
         elif parsed.path == "/skills":
             try:
                 from lib.skill import list_skills
@@ -121,17 +155,24 @@ class Handler(BaseHTTPRequestHandler):
     def _resolve_screenshot_port(self, parsed) -> int | None:
         """Resolve CDP port from query param or URL path segment.
 
-        GET /screenshot?port=9222       → use port directly
-        GET /screenshot/<session_id>    → look up port from DB
+        GET /screenshot?port=9222                → use port directly
+        GET /screenshot/<session_id>             → look up port from DB
+        GET /captcha/screenshot?port=9222        → use port directly
+        GET /captcha/screenshot/<session_id>     → look up port from DB
+        GET /captcha/bounds?port=9222            → use port directly
+        GET /captcha/bounds/<session_id>         → look up port from DB
         """
         qs = parse_qs(parsed.query)
         if "port" in qs:
             return int(qs["port"][0])
 
-        # Extract session_id from path: /screenshot/uscis
-        match = re.match(r"^/screenshot/([a-zA-Z0-9_-]+)$", parsed.path)
+        # Extract session_id from path: /screenshot/uscis or /captcha/screenshot/uscis or /captcha/bounds/uscis
+        match = re.search(r"/([a-zA-Z0-9_-]+)$", parsed.path)
         if match:
-            return _lookup_port(match.group(1))
+            segment = match.group(1)
+            # Skip if segment is a known endpoint name
+            if segment not in ("screenshot", "bounds", "captcha"):
+                return _lookup_port(segment)
 
         return None
 
