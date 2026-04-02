@@ -20,6 +20,7 @@ from lib.browser import (
 from lib.chrome import start_chrome, stop_chrome, chrome_alive
 from lib.bypass.cloudflare import is_cloudflare, wait_for_cloudflare
 from lib.notify import send_webhook
+from lib.captcha import find_captcha_bounds, capture_captcha_screenshot
 
 
 # ── Protocols (for mocking in tests) ─────────────────────────────────
@@ -54,6 +55,11 @@ class ChromeTools(Protocol):
 
 class ScreenshotTools(Protocol):
     def capture(self) -> bytes: ...
+
+
+class CaptchaTools(Protocol):
+    def bounds(self) -> dict | None: ...
+    def screenshot(self, padding: int = 10) -> bytes: ...
 
 
 # ── Concrete implementations ─────────────────────────────────────────
@@ -151,6 +157,19 @@ class _ScreenshotTools:
         return capture_screenshot(self.port)
 
 
+@dataclass(frozen=True)
+class _CaptchaTools:
+    port: int
+
+    def bounds(self) -> dict | None:
+        """Return {x, y, width, height} of the captcha element, or None."""
+        return find_captcha_bounds(self.port)
+
+    def screenshot(self, padding: int = 10) -> bytes:
+        """Capture a PNG screenshot of just the captcha area."""
+        return capture_captcha_screenshot(self.port, padding=padding)
+
+
 # ── Toolset facade ───────────────────────────────────────────────────
 
 @dataclass(frozen=True)
@@ -161,6 +180,7 @@ class Toolset:
     notify: _NotifyTools
     chrome: _ChromeTools
     screenshot: _ScreenshotTools
+    captcha: _CaptchaTools
     log: Callable = field(default=print)
 
 
@@ -177,5 +197,6 @@ def create_toolset(
         notify=_NotifyTools(),
         chrome=_ChromeTools(port=cdp_port),
         screenshot=_ScreenshotTools(port=cdp_port),
+        captcha=_CaptchaTools(port=cdp_port),
         log=log_fn,
     )
