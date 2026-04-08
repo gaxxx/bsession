@@ -5,7 +5,7 @@ Docker network can control browser sessions without docker exec.
 
 Endpoints:
   POST /run          {"command": "list"}
-  POST /run          {"command": "run", "args": ["uscis"]}
+  POST /run          {"command": "start", "args": ["uscis"]}
   POST /run          {"command": "stop", "args": ["uscis"]}
   POST /ab           {"port": 9222, "command": "snapshot"}
   POST /ab           {"port": 9222, "command": "open", "args": ["https://..."]}
@@ -14,12 +14,12 @@ Endpoints:
   POST /chrome/stop  {"port": 9222}
   GET  /screenshot?port=9222        — PNG of the active tab (by CDP port)
   GET  /screenshot/<session_id>     — PNG of the active tab (by session name)
-  GET  /skills                      — list available skills
-  GET  /eval/<session_id>           — run history and summary stats
+  GET  /capabilities                — list available capabilities (TOML + legacy conf)
   GET  /health
 """
 
 import json
+import os
 import re
 import subprocess
 import sys
@@ -84,34 +84,34 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:
                 self._json_response(500, {"error": str(e)})
 
-        elif parsed.path == "/skills":
+        elif parsed.path == "/capabilities":
             try:
-                from lib.skill import list_skills
-                self._json_response(200, {"skills": list_skills()})
-            except Exception as e:
-                self._json_response(500, {"error": str(e)})
-
-        elif parsed.path.startswith("/eval/"):
-            try:
-                session_id = parsed.path.split("/eval/", 1)[1]
-                from lib.eval import EvalRecorder
-                recorder = EvalRecorder()
-                qs = parse_qs(parsed.query)
-                limit = int(qs.get("limit", [20])[0])
-                summary = recorder.get_summary(session_id)
-                runs = recorder.get_runs(session_id, limit=limit)
-                self._json_response(200, {
-                    "session_id": session_id,
-                    "summary": {
-                        "total_runs": summary.total_runs,
-                        "success_rate": summary.success_rate,
-                        "avg_duration_ms": summary.avg_duration_ms,
-                        "p95_duration_ms": summary.p95_duration_ms,
-                        "last_error": summary.last_error,
-                        "last_run": summary.last_run,
-                    },
-                    "runs": runs,
-                })
+                import tomllib
+                import glob as globmod
+                caps = []
+                conf_dir = "/workspace/conf"
+                # TOML configs (new format)
+                for f in sorted(globmod.glob(os.path.join(conf_dir, "*.toml"))):
+                    name = os.path.basename(f).replace(".toml", "")
+                    try:
+                        with open(f, "rb") as fh:
+                            data = tomllib.load(fh)
+                        session = data.get("session", {})
+                        caps.append({
+                            "name": session.get("name", name),
+                            "instructions": session.get("instructions", ""),
+                            "data": session.get("data", ""),
+                            "type": "capability",
+                        })
+                    except Exception:
+                        caps.append({"name": name, "type": "error"})
+                # Legacy .conf files (only if no matching .toml exists)
+                toml_names = {os.path.basename(f).replace(".toml", "") for f in globmod.glob(os.path.join(conf_dir, "*.toml"))}
+                for f in sorted(globmod.glob(os.path.join(conf_dir, "*.conf"))):
+                    name = os.path.basename(f).replace(".conf", "")
+                    if name not in toml_names:
+                        caps.append({"name": name, "type": "legacy"})
+                self._json_response(200, {"capabilities": caps})
             except Exception as e:
                 self._json_response(500, {"error": str(e)})
 

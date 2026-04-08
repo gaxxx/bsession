@@ -1,0 +1,5 @@
+[uscis]
+receipt_number = "IOE0000000000"
+
+[settings]
+webhook_url = ""

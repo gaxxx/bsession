@@ -1,13 +1,13 @@
 ---
 name: browser
-description: Browser automation — setup the bsession environment, fetch info from a website (one-shot), create scripted automations (one-shot or recurring), or debug existing sessions. Works from any repo.
+description: Browser automation — setup the bsession environment, fetch info from a website (one-shot), create new capabilities, or follow existing capability instructions. Works from any repo.
 user-invocable: true
 metadata: {"openclaw":{"requires":{"bins":["curl"]}}}
 ---
 
 # /browser skill
 
-You help users automate browsers inside the bsession Docker container — whether it's initial setup, a quick interactive fetch, a scripted automation (one-shot or recurring), or debugging an existing session.
+You help users automate browsers inside the bsession Docker container — whether it's initial setup, a quick interactive fetch, creating a new capability, or running an existing one.
 
 **This is a global skill** — it works from any repo.
 
@@ -24,7 +24,7 @@ Store the chosen method as **ACCESS_MODE** (`api-container`, `api-host`, `docker
 
 ### How to call commands in each mode
 
-**Session commands** (list, show, run, stop, logs):
+**Session commands** (list, start, stop, show, cap):
 
 | Mode | Command |
 |---|---|
@@ -33,21 +33,28 @@ Store the chosen method as **ACCESS_MODE** (`api-container`, `api-host`, `docker
 | `docker-exec` | `docker exec agent-browser python3 /app/session.py list` |
 | `cli` | `bsession list` |
 
-**Agent-browser commands** (open, snapshot, click, fill):
+**Task execution** (run a capability's instructions via the engine):
+
+| Mode | Command |
+|---|---|
+| `docker-exec` | `docker exec agent-browser python3 /app/session.py <name> [task] [data.toml]` |
+| `cli` | `bsession <name> [task] [data.toml]` |
+
+**Browser commands** (navigate, snapshot, click, fill, bypass):
 
 | Mode | Command |
 |---|---|
 | `api-container` | `curl -s -X POST http://agent-browser:8080/ab -d '{"port":9222,"command":"snapshot"}'` |
 | `api-host` | `curl -s -X POST http://localhost:8080/ab -d '{"port":9222,"command":"snapshot"}'` |
-| `docker-exec` | `docker exec agent-browser agent-browser --cdp 9222 snapshot` |
-| `cli` | `docker exec agent-browser agent-browser --cdp 9222 snapshot` |
+| `docker-exec` | `docker exec agent-browser python3 /app/session.py <name> snapshot` |
+| `cli` | `bsession <name> snapshot` |
 
 **Chrome lifecycle** (start/stop):
 
 | Mode | Command |
 |---|---|
 | `api-*` | `curl -s -X POST http://ENDPOINT:8080/chrome/start -d '{"port":9222}'` |
-| `docker-exec` | `docker exec agent-browser python3 -c "..."` (see examples below) |
+| `docker-exec` / `cli` | `bsession start <name>` / `bsession stop <name>` |
 
 **API responses** are always JSON:
 ```json
@@ -61,10 +68,8 @@ Parse the user's slash command arguments:
 
 - **No arguments or `list`** → List mode
 - **`setup`** → Setup mode
-- **`fetch <url>`** → Fetch mode (one-shot extraction, offers to persist)
-- **`new <name>`** → Create mode (scaffold a script)
-- **`run <name>`** → Run mode (execute and show results)
-- **Otherwise** → Debug mode
+- **`new <name>`** → New mode (interactively explore a site and generate a capability)
+- **Otherwise** → Capability mode (run a registered capability)
 
 ## Pre-check (all modes except setup)
 
@@ -74,19 +79,23 @@ Verify the agent-browser is reachable using the resolve logic above. If none wor
 
 ## List mode (`/browser` or `/browser list`)
 
-### Step 1: Get session status
+### Step 1: Get capabilities and sessions
 
 ```bash
-# API mode
-curl -s -X POST http://agent-browser:8080/run -d '{"command":"list"}'
-
-# CLI mode
+bsession cap list
 bsession list
 ```
 
-### Step 2: Present as a table
+### Step 2: Present results
 
-Parse the stdout and display sessions with status, type, and description.
+Combine the output into a clean summary. Append available commands:
+
+```
+Commands:
+  /browser <name>           run a capability
+  /browser new <name>       create a new capability
+  /browser list             show this view
+```
 
 ---
 
@@ -95,166 +104,182 @@ Parse the stdout and display sessions with status, type, and description.
 Run the install script:
 
 ```bash
-bash ~/.openclaw/workspace/skills/browser/scripts/install.sh
+bash ~/.claude/skills/browser/scripts/install.sh
 ```
 
 Options: `--workspace <path>`, `--vnc-password <pw>`, `--repo <git-url>`
 
 ---
 
-## Fetch mode (`/browser fetch <url>`)
+## New mode (`/browser new <name>`)
 
-One-shot: open a URL, extract information, return it.
+Interactively explore a website, then generate a full capability (instructions + data form + conf).
 
-### Step 1: Start a temporary Chrome
+The capability name is: `$ARGUMENTS` → strip `new ` prefix → that's `<name>`.
+
+### Step 1: Gather requirements
+
+Ask the user (briefly, in one message):
+1. What URL(s) to target
+2. What to do — extract data, fill a form, check a status?
+3. If multi-step: what pages/forms/buttons to navigate through
+4. What data inputs are needed? (receipt numbers, search terms, credentials, etc.)
+
+### Step 2: Interactive exploration
+
+Start a session and explore the target site:
 
 ```bash
-# API mode
-curl -s -X POST http://agent-browser:8080/chrome/start -d '{"port":9222,"profile":"/workspace/data/profile-tmp"}'
-
-# docker-exec mode
-docker exec agent-browser python3 -c "
-import sys; sys.path.insert(0, '/app')
-from lib.browser import start_chrome
-pid = start_chrome(9222, '/workspace/data/profile-tmp')
-print(f'Chrome started, pid={pid}')
-"
+bsession start <name>
+bsession <name> navigate "<url>" -w 5
+bsession <name> snapshot
 ```
 
-### Step 2: Navigate
+Walk through the site step by step:
+- Read snapshots to understand page structure
+- Fill forms, click buttons, handle Cloudflare
+- Note every step needed to reach the goal
+- Identify which values are user-supplied inputs (these become form fields)
+
+### Step 3: Generate the capability files
+
+**Read existing examples first.** Before writing files, read:
+- `CLAUDE.md` in the bsession project root — "Instruction Format" section for the full spec
+- 1-2 existing instruction files from `workspace/instructions/` as format examples
+- The matching conf and form files to see naming conventions
+
+Then create three files following the patterns from the examples:
+- `workspace/conf/<name>.toml` — session config
+- `workspace/instructions/<name>.md` — parseable engine instructions (convert your exploration steps into numbered action lines)
+- `workspace/forms/<name>.default.toml` — data form
+
+### Step 4: Test the capability
+
+Run it to verify:
 
 ```bash
-# API mode
-curl -s -X POST http://agent-browser:8080/ab -d '{"port":9222,"command":"open","args":["URL"]}'
-sleep 5
-curl -s -X POST http://agent-browser:8080/ab -d '{"port":9222,"command":"snapshot"}'
-
-# docker-exec mode
-docker exec agent-browser agent-browser --cdp 9222 open "URL"
-sleep 5
-docker exec agent-browser agent-browser --cdp 9222 snapshot
+bsession <name>
 ```
 
-### Step 3: Handle Cloudflare
+If it fails, adjust patterns or add `wait`/`snapshot` steps as needed.
 
-Check the snapshot for Cloudflare patterns (`Verify you are human`, `Just a moment`, `cf-turnstile`). If detected:
+### Step 5: Stop and tell the user
 
 ```bash
-# API mode — find the Turnstile iframe ref in the snapshot, then click it
-curl -s -X POST http://agent-browser:8080/ab -d '{"port":9222,"command":"click","args":["IFRAME_REF"]}'
-sleep 8
-curl -s -X POST http://agent-browser:8080/ab -d '{"port":9222,"command":"snapshot"}'
+bsession stop <name>
 ```
 
-### Step 4: Interact
-
-```bash
-# API mode
-curl -s -X POST http://agent-browser:8080/ab -d '{"port":9222,"command":"fill","args":["REF","value"]}'
-curl -s -X POST http://agent-browser:8080/ab -d '{"port":9222,"command":"click","args":["REF"]}'
-curl -s -X POST http://agent-browser:8080/ab -d '{"port":9222,"command":"snapshot"}'
 ```
+Created capability "<name>":
+  conf:         workspace/conf/<name>.toml
+  instructions: workspace/instructions/<name>.md
+  data form:    workspace/forms/<name>.default.toml
 
-### Step 5: Return results
-
-Parse the snapshot stdout and present the information cleanly.
-
-### Step 6: Offer to persist
-
-Ask if the user wants to save as a reusable script. If yes, create conf + script in the workspace.
-
-### Step 7: Cleanup
-
-```bash
-# API mode
-curl -s -X POST http://agent-browser:8080/chrome/stop -d '{"port":9222}'
-
-# docker-exec mode
-docker exec agent-browser python3 -c "
-import sys; sys.path.insert(0, '/app')
-from lib.browser import stop_chrome
-stop_chrome(9222)
-"
+Run anytime:
+  bsession <name>
+  /browser <name>
 ```
 
 ---
 
-## Create mode (`/browser new <name>`)
+## Capability mode (`/browser <name>`)
 
-Ask the user what to build, then scaffold conf + script in the workspace. Same conventions as the Claude Code skill — see the Script conventions section below.
+Run a registered capability's instructions automatically using the execution engine.
 
-For **API mode**, create files via the host filesystem or use the run endpoint to write them:
-```bash
-curl -s -X POST http://agent-browser:8080/run -d '{"command":"show","args":["name"]}'
-```
+The capability name is `$ARGUMENTS` (trimmed). May include a task name and/or data file override.
 
----
-
-## Run mode (`/browser run <name>`)
+### Step 1: Check the data form
 
 ```bash
-# API mode
-curl -s -X POST http://agent-browser:8080/run -d '{"command":"run","args":["name"]}'
-sleep 15
-curl -s -X POST http://agent-browser:8080/run -d '{"command":"logs","args":["name","-n","50"]}'
-
-# CLI mode
-bsession run name
-sleep 15
-bsession logs name -n 50
+bsession cap show <name>
 ```
 
-Parse logs and present results. If failed, switch to debug mode.
+Review the data form values. If any required fields have placeholders or are empty:
+- If the user provided values in their message, **update the form file** before running
+- Otherwise, ask the user to provide values first
+
+### Step 2: Run the capability
+
+The execution engine (`lib/engine.py`) handles parsing instructions, loading data, and driving the browser. It auto-starts Chrome if needed.
+
+```bash
+# Run default task with default data
+bsession <name>
+
+# Run default task with specific data file
+bsession <name> forms/<name>.<profile>.toml
+
+# Run a named task (for multi-task instructions)
+bsession <name> <task>
+
+# Run a named task with specific data
+bsession <name> <task> forms/<name>.<profile>.toml
+```
+
+### Step 3: Interpret results
+
+The engine prints extracted variables at the end. Present results to the user.
+
+**If extracts are empty or wrong**, the instruction patterns likely don't match the actual page. Debug and fix:
+
+1. Take a snapshot to see the real page structure:
+   ```bash
+   bsession <name> snapshot
+   ```
+2. Search the snapshot for the expected content (grep for keywords)
+3. Update the `extract` patterns in `workspace/instructions/<name>.md` to match
+4. Stop and re-run to verify:
+   ```bash
+   bsession stop <name>
+   bsession <name>
+   ```
+
+### Step 4: Cleanup (optional)
+
+```bash
+bsession stop <name>
+```
+
+### Manual fallback
+
+If the engine fails or you need finer control, you can still run individual browser commands:
+
+```bash
+bsession <name> navigate "<url>" -w 5
+bsession <name> snapshot
+bsession <name> bypass
+bsession <name> fill <ref> "value"
+bsession <name> click <ref>
+```
 
 ---
 
-## Debug mode (`/browser <session-id>`)
+## Discovering capabilities and references
 
-1. Get status and logs via the run endpoint
-2. Diagnose from log output
-3. Fix the script or conf, then restart
+**Do not rely on hardcoded capability lists.** Discover dynamically:
 
----
-
-## Script conventions
-
-**Imports:**
-```python
-import os, re, sys, time
-sys.path.insert(0, "/app")
-from lib.browser import (
-    ab, ab_quiet, find_ref, is_cloudflare, wait_for_cloudflare,
-    send_webhook, make_logger,
-)
+```bash
+bsession cap list                        # all registered capabilities
+bsession cap show <name>                 # conf, instructions, data paths + contents
 ```
 
-**Config from env vars:**
-```python
-port = int(os.environ.get("CDP_PORT", 9222))
-session_name = os.environ.get("SESSION_NAME", "<name>")
-webhook_url = os.environ.get("N8N_WEBHOOK_URL", "")
-check_interval = int(os.environ.get("CHECK_INTERVAL", 1800))
-```
+**For format specs, snapshot reference, available actions, and browser API details**, read `CLAUDE.md` in the bsession project root. It is the single source of truth for:
+- Instruction format (syntax, available actions table)
+- Snapshot format (accessibility tree structure, `[ref=N]` conventions)
+- Browser layer API (`ab()`, `find_ref()`, etc.)
+- Cloudflare bypass strategy
 
-**Core pattern:** open URL → wait → snapshot → handle Cloudflare → find elements → interact → parse results
-
-**One-shot:** execute and exit. **Recurring:** `while True` with sleep, compare state, webhook on change.
-
-## Reference: lib/browser.py
-
-- `ab(port, cmd, *args)` / `ab_quiet(port, cmd, *args)` — run agent-browser commands
-- `find_ref(snapshot, pattern)` / `find_all_refs(snapshot, pattern)` — parse accessibility tree
-- `is_cloudflare(snapshot)` / `wait_for_cloudflare(port, snapshot, ...)` — Cloudflare handling
-- `send_webhook(url, payload)` — POST JSON to webhook
-- `make_logger(session_name)` — create timestamped logger
+**Never attempt to solve CAPTCHAs programmatically.** If a CAPTCHA appears, direct the user to VNC at `http://localhost:6080/vnc.html`.
 
 ## Reference: HTTP API endpoints
 
 | Endpoint | Method | Body | Returns |
 |---|---|---|---|
 | `/health` | GET | — | `{"status":"ok"}` |
-| `/run` | POST | `{"command":"list","args":[]}` | `{"stdout":"...","stderr":"...","returncode":0}` |
-| `/ab` | POST | `{"port":9222,"command":"snapshot","args":[]}` | `{"stdout":"...","stderr":"...","returncode":0}` |
-| `/chrome/start` | POST | `{"port":9222,"profile":"/workspace/data/profile-tmp"}` | `{"pid":123,"port":9222}` |
+| `/run` | POST | `{"command":"list\|start\|stop","args":[]}` | `{"stdout":"...","stderr":"...","returncode":0}` |
+| `/ab` | POST | `{"port":9222,"command":"snapshot\|click\|open","args":[]}` | `{"stdout":"...","stderr":"...","returncode":0}` |
+| `/chrome/start` | POST | `{"port":9222,"profile":"..."}` | `{"pid":123,"port":9222}` |
 | `/chrome/stop` | POST | `{"port":9222}` | `{"stopped":true,"port":9222}` |
 | `/chrome/alive` | POST | `{"port":9222}` | `{"alive":true,"port":9222}` |
+| `/capabilities` | GET | — | JSON list of registered capabilities |
+| `/screenshot/<session_id>` | GET | — | PNG image |

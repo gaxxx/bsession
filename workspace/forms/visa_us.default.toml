@@ -1,0 +1,9 @@
+[visa]
+login_url = "https://ais.usvisa-info.com/en-us/niv/users/sign_in"
+username = "user@example.com"
+password = "changeme"
+schedule_url = "https://ais.usvisa-info.com/en-us/niv/schedule/12345678/appointment"
+location = "San Francisco"
+
+[settings]
+webhook_url = ""

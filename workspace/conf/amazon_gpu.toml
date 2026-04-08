@@ -1,0 +1,4 @@
+[session]
+name = "amazon_gpu"
+instructions = "instructions/amazon_price.md"
+data = "forms/amazon_gpu.default.toml"

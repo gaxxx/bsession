@@ -1,0 +1,8 @@
+[flight]
+origin = "SFO"
+destination = "NRT"
+depart_date = "2026-06-15"
+return_date = "2026-06-30"
+
+[settings]
+webhook_url = ""

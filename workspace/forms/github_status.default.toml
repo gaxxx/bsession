@@ -1,0 +1,5 @@
+[status]
+url = "https://www.githubstatus.com"
+
+[settings]
+webhook_url = ""

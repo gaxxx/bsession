@@ -7,7 +7,7 @@ echo "========================================="
 echo ""
 
 # Ensure workspace directories exist
-mkdir -p /workspace/conf /workspace/data /workspace/scripts /workspace/skills
+mkdir -p /workspace/conf /workspace/data /workspace/scripts /workspace/instructions /workspace/forms
 
 # Start virtual display
 export DISPLAY=:99
@@ -28,17 +28,23 @@ else
 fi
 sleep 1
 
-# Start noVNC (web-based VNC client)
-websockify --web=/usr/share/novnc 6080 localhost:5900 &
+# Start noVNC (web-based VNC client) with watchdog
+_run_websockify() {
+    while true; do
+        websockify --web=/usr/share/novnc 6080 localhost:5900
+        echo "[watchdog] websockify exited, restarting in 2s..."
+        sleep 2
+    done
+}
+_run_websockify &
 sleep 1
 
 echo "========================================="
-echo " VNC server running on port 5900"
 echo " noVNC web access: http://localhost:6080/vnc.html"
 echo "========================================="
 echo ""
-echo "Use bsession to manage monitors:"
-echo "  python3 /app/session.py run <id>"
+echo "Use bsession to manage sessions:"
+echo "  python3 /app/session.py start <name>"
 echo "  python3 /app/session.py list"
 echo ""
 

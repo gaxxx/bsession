@@ -17,13 +17,8 @@ RUN npm install -g agent-browser
 
 WORKDIR /app
 
-# Install PyYAML for skill definitions
-RUN python3 -c "import ensurepip; ensurepip.bootstrap()" 2>/dev/null; \
-    python3 -m pip install --no-cache-dir pyyaml || true
-
-# Copy session manager + skill runner (baked into image)
+# Copy session manager (baked into image)
 COPY session.py /app/session.py
-COPY run_skill.py /app/run_skill.py
 COPY lib/ /app/lib/
 
 # Copy entrypoint

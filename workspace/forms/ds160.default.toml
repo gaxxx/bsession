@@ -1,0 +1,100 @@
+# DS-160 Nonimmigrant Visa Application Data
+# Application ID: AA00FFUXL3
+
+[ds160]
+location_code = "BEJ"           # CHINA, BEIJING
+captcha = ""                    # must be filled manually each time
+security_answer = "LUO"
+
+[personal]
+surnames = "Xian Hua"
+given_names = "Wu"
+full_name_native = "吴先华"
+sex = "M"                       # M=MALE, F=FEMALE
+marital_status = "M"            # M=MARRIED, S=SINGLE, W=WIDOWED, D=DIVORCED
+dob_day = "15"
+dob_month = "9"                 # numeric: 1=JAN .. 12=DEC
+dob_year = "1956"
+birth_city = "Hubei"
+birth_state = "Hubei"
+birth_country_code = "CHIN"     # CHINA
+nationality_code = "CHIN"
+national_id = "422428195610154279"
+language = "MANDARIN"
+
+[travel]
+visa_class = "B"                # B=TEMP. BUSINESS OR PLEASURE VISITOR
+visa_subclass = "B1-CF"         # B1-CF=BUSINESS/CONFERENCE, B1-B2=BUSINESS OR TOURISM, B2-TM=TOURISM/MEDICAL
+arrival_day = "18"
+arrival_month = "6"             # numeric
+arrival_year = "2026"
+stay_length = "1"
+stay_unit = "M"                 # Y=Years, M=Months, W=Weeks, D=Days
+us_address1 = "2315 Highland AVE"
+us_city = "Falls Church"
+us_state = "VA"
+us_zip = "22046"
+payer_type = "O"                # S=Self, O=Other Person, C=Other Company
+
+[address]
+street1 = "71 JiaoYU Road, JIUZHEN TOWN"
+city = "TIANMEN"
+state = "HUBEI"
+postal_code = "431705"
+country_code = "CHIN"
+primary_phone = "15801207407"
+secondary_phone = "13477503226"
+email = "woosiyun@gmail.com"
+
+[passport]
+type = "R"                      # R=REGULAR
+number = "EJ1234567"
+issued_country_code = "CHIN"
+issued_city = "HUBEI"
+issued_state = "HUBEI"
+issue_day = "15"
+issue_month = "1"               # numeric: 1=JAN
+issue_year = "2026"
+expire_day = "14"
+expire_month = "1"
+expire_year = "2036"
+
+[us_contact]
+surnames = "SIYUN"
+given_names = "WU"
+relationship = "R"              # R=RELATIVE
+address1 = "2315 HIGHLAND AVE"
+city = "FALLS CHURCH"
+state = "VA"
+zip = "22046"
+phone = "5714642506"
+email = "woosiyun@gmail.com"
+
+[family]
+father_surnames = "YAOLIN"
+father_given = "WU"
+mother_surnames = "ZHENXIANG"
+mother_given = "LUO"
+spouse_surnames = "LAMEI"
+spouse_given = "WEI"
+spouse_dob_day = "16"
+spouse_dob_month = "12"         # numeric: 12=DEC
+spouse_dob_year = "1958"
+spouse_nationality_code = "CHIN"
+spouse_birth_city = "HUBEI"
+spouse_birth_country_code = "CHIN"
+
+[work]
+occupation = "RT"               # RT=RETIRED
+
+[education]
+institution = "TIANMEN NORMAL SCHOOL"
+address = "NO 1 SPECIAL, XUEYUAN ROAD"
+city = "TIANMEN"
+state = "HUBEI"
+postal_code = "431700"
+country_code = "CHIN"
+course = "EDUCATION"
+
+[settings]
+webhook_url = ""
