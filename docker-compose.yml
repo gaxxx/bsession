@@ -4,10 +4,10 @@ services:
     build: .
     container_name: agent-browser
     ports:
-      - "6080:6080"   # noVNC web
-      - "8080:8080"   # bsession API
+      - "6080:6080" # noVNC web
+      - "8080:8080" # bsession API
     volumes:
-      - ./workspace:/workspace
+      - ${HOME}/.bsession/workspace:/workspace
     env_file:
       - .env
     environment:
