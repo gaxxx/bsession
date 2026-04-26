@@ -49,5 +49,6 @@ services:
       - DISPLAY=:99
     volumes:
       - ${OPENCLAW_WORKSPACE_DIR:-~/.openclaw/workspace}/bsession:/workspace
+    shm_size: 1gb
     networks:
       - default

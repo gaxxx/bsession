@@ -67,6 +67,9 @@ def start_chrome(port, profile_dir, start_url="about:blank"):
             "--no-default-browser-check", "--no-sandbox",
             "--disable-gpu", "--test-type",
             "--disable-background-networking", "--disable-sync",
+            # /dev/shm in Docker is 64MB by default; heavy pages (Costco etc.)
+            # OOM-crash the renderer. Spill shared memory to disk instead.
+            "--disable-dev-shm-usage",
             "--window-size=1280,900",
             f"--load-extension={STEALTH_EXT}",
             start_url,
