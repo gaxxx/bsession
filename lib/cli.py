@@ -184,6 +184,39 @@ def cmd_screenshot(args, ctx):
     print(out)
 
 
+# ── Captcha ─────────────────────────────────────────────────────────
+
+CAPTCHAS_DIR = "/workspace/.bsession-state/captchas"
+
+
+def cmd_captcha(args, ctx):
+    port = ensure_chrome(ctx.profile)
+    from lib.captcha import find_captcha_bounds, capture_captcha_screenshot
+
+    if args.captcha_cmd == "bounds":
+        b = find_captcha_bounds(port)
+        if b is None:
+            print("(no captcha element on page)", file=sys.stderr)
+            sys.exit(1)
+        print(json.dumps(b))
+        return
+
+    # screenshot
+    if args.output:
+        out = args.output
+    else:
+        os.makedirs(CAPTCHAS_DIR, exist_ok=True)
+        out = f"{CAPTCHAS_DIR}/{ctx.profile}-{int(time.time())}.png"
+    try:
+        png = capture_captcha_screenshot(port, padding=args.padding)
+    except RuntimeError as e:
+        print(str(e), file=sys.stderr)
+        sys.exit(1)
+    with open(out, "wb") as f:
+        f.write(png)
+    print(out)
+
+
 # ── Bypass ──────────────────────────────────────────────────────────
 
 _CF_PATTERNS = [
@@ -349,6 +382,12 @@ def build_parser():
 
     sc = sub.add_parser("screenshot"); sc.add_argument("--output", default=None)
 
+    ca = sub.add_parser("captcha"); ca_sub = ca.add_subparsers(dest="captcha_cmd", required=True)
+    ca_sub.add_parser("bounds")
+    cs = ca_sub.add_parser("screenshot")
+    cs.add_argument("--padding", type=int, default=10)
+    cs.add_argument("--output", default=None, help="output PNG path (container-side); defaults to /workspace/.bsession-state/captchas/<profile>-<ts>.png")
+
     b = sub.add_parser("bypass"); b.add_argument("kind", choices=["cloudflare"]); b.add_argument("--max-wait", type=int, default=300)
 
     fo = sub.add_parser("form"); fo_sub = fo.add_subparsers(dest="form_cmd", required=True)
@@ -373,7 +412,8 @@ def main(argv=None):
         "nav": cmd_nav, "snapshot": cmd_snapshot, "find": cmd_find,
         "click": cmd_click, "fill": cmd_fill, "type": cmd_type, "select": cmd_select,
         "extract": cmd_extract, "wait": cmd_wait, "wait-for": cmd_wait_for,
-        "screenshot": cmd_screenshot, "bypass": cmd_bypass, "notify": cmd_notify,
+        "screenshot": cmd_screenshot, "captcha": cmd_captcha,
+        "bypass": cmd_bypass, "notify": cmd_notify,
     }
     if args.cmd in handlers:
         return handlers[args.cmd](args, ctx)
