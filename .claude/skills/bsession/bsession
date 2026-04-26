@@ -13,7 +13,9 @@
 set -euo pipefail
 
 CONTAINER="agent-browser"
-WORKSPACE_HOST="$HOME/.bsession/workspace"
+# Override BSESSION_WORKSPACE if your container mounts a different host dir
+# (e.g. ~/.openclaw/workspace/bsession when running with docker-compose.openclaw.yml).
+WORKSPACE_HOST="${BSESSION_WORKSPACE:-$HOME/.bsession/workspace}"
 WORKSPACE_CONTAINER="/workspace"
 
 if ! docker inspect -f '{{.State.Running}}' "$CONTAINER" &>/dev/null; then

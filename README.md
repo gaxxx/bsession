@@ -56,6 +56,26 @@ bash ~/.bsession/source/.claude/skills/bsession/scripts/install.sh --uninstall
 
 (Stops the container, removes `bsession` from PATH, removes the skill symlink. Workspace data is preserved.)
 
+### OpenClaw integration
+
+If `~/.openclaw/workspace/skills/` exists, the installer also symlinks the skill into `~/.openclaw/workspace/skills/bsession/` so OpenClaw can invoke it.
+
+To run bsession alongside the OpenClaw gateway, use the OpenClaw compose file (mounts `~/.openclaw/workspace/bsession` instead of `~/.bsession/workspace`):
+
+```bash
+cd ~/.bsession/source
+docker compose -f docker-compose.openclaw.yml up -d
+```
+
+Point the host CLI at the right workspace:
+
+```bash
+# in your shell rc
+export BSESSION_WORKSPACE="$HOME/.openclaw/workspace/bsession"
+```
+
+The `bsession` command honors `BSESSION_WORKSPACE` for the rsync target so forms get staged to the path the OpenClaw container actually mounts.
+
 ## Quickstart
 
 After install, run the example USCIS skill:

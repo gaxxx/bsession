@@ -104,6 +104,20 @@ if [[ "$DO_SKILL" == "1" ]]; then
     if [[ -e "$HOME/.claude/skills/browser" ]]; then
         warn "Old 'browser' skill exists at ~/.claude/skills/browser — remove manually if no longer used"
     fi
+
+    # Also link into ~/.openclaw/workspace/skills/ if OpenClaw is set up
+    if [[ -d "$HOME/.openclaw/workspace/skills" ]]; then
+        OPENCLAW_DST="$HOME/.openclaw/workspace/skills/bsession"
+        if [[ -e "$OPENCLAW_DST" && ! -L "$OPENCLAW_DST" ]]; then
+            warn "$OPENCLAW_DST exists and is not a symlink; not overwriting"
+        else
+            ln -sfn "$SOURCE/.claude/skills/bsession" "$OPENCLAW_DST"
+            info "Linked OpenClaw skill: $OPENCLAW_DST"
+        fi
+        if [[ -e "$HOME/.openclaw/workspace/skills/browser" ]]; then
+            warn "Old 'browser' skill exists at ~/.openclaw/workspace/skills/browser — remove manually if no longer used"
+        fi
+    fi
 fi
 
 # ── start container ─────────────────────────────────────────────────
