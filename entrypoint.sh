@@ -6,8 +6,8 @@ echo " Agent Browser Container"
 echo "========================================="
 echo ""
 
-# Ensure workspace directories exist
-mkdir -p /workspace/conf /workspace/data /workspace/scripts
+# Ensure workspace exists (skill state lives under /workspace/.bsession-state/)
+mkdir -p /workspace
 
 # Start virtual display
 export DISPLAY=:99
@@ -37,9 +37,9 @@ echo " VNC server running on port 5900"
 echo " noVNC web access: http://localhost:6080/vnc.html"
 echo "========================================="
 echo ""
-echo "Use bsession to manage monitors:"
-echo "  python3 /app/session.py run <id>"
-echo "  python3 /app/session.py list"
+echo "Use bsession (host CLI) to drive browser commands:"
+echo "  bsession nav <url>"
+echo "  bsession session list"
 echo ""
 
 # Start bsession HTTP API (for container-to-container access)

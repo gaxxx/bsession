@@ -17,8 +17,7 @@ RUN npm install -g agent-browser
 
 WORKDIR /app
 
-# Copy session manager (baked into image)
-COPY session.py /app/session.py
+# Copy bsession primitive CLI (baked into image)
 COPY lib/ /app/lib/
 
 # Copy entrypoint

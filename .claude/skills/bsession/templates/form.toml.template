@@ -1,0 +1,12 @@
+# Each *.toml under forms/ is one instance: one case, one account, one target.
+# Field names are arbitrary — your run.sh decides what to read.
+#
+# Reserved keys (start with _bsession_):
+#   _bsession_profile = "..."   # override profile (default = skill name).
+#                                # Use to isolate cookies for this instance,
+#                                # e.g., when same skill drives multiple accounts.
+
+# Example:
+url = "https://example.com"
+target_name = "Some Target"
+threshold = 100

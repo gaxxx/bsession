@@ -1,0 +1,48 @@
+---
+name: <SKILL_NAME>
+description: <one sentence: what this checks/scrapes/monitors. Triggers on "<phrase 1>", "<phrase 2>", "<chinese phrase>".>
+---
+
+# <Skill display name>
+
+<2-3 sentence overview of what this skill does.>
+
+## Available <cases / instances / targets>
+
+| Form | Description |
+|------|-------------|
+| `forms/<basename>.toml` | <what this instance is> |
+
+Add more by dropping a `.toml` file into `forms/` with the same shape.
+
+## Usage
+
+For a single <case>:
+```bash
+bash .claude/skills/<SKILL_NAME>/run.sh .claude/skills/<SKILL_NAME>/forms/<basename>.toml
+```
+
+For all <cases> (loop):
+```bash
+for f in .claude/skills/<SKILL_NAME>/forms/*.toml; do
+  bash .claude/skills/<SKILL_NAME>/run.sh "$f"
+done
+```
+
+## Routing
+
+- "<user phrase 1>" → `forms/<basename>.toml`
+- "<user phrase 2>" → ask which, or run all
+
+## Output
+
+Each run prints one JSON line:
+
+```json
+{"<key1>": "...", "<key2>": "...", "status": "...", "<extracted>": "..."}
+```
+
+## Notes
+
+- <Cloudflare? Login? CAPTCHA? Anything special.>
+- <Profile / cookies behavior if non-default.>

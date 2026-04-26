@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# Host-side wrapper: forwards to lib/cli.py running inside the container.
+#
+# When BSESSION_FORM is set (host path anywhere on disk), the form's
+# whole skill dir is rsynced into ~/.bsession/workspace/<skill_id>/ so
+# the container can read it via the existing /workspace mount. Skills
+# can stay in your project (.claude/skills/...) — the sync is delta-only
+# and runs on every command.
+#
+# Skill dir derivation:
+#   .../<skill_id>/forms/<basename>.toml  → skill_dir = .../<skill_id>/
+#   .../<skill_id>/<basename>.toml        → skill_dir = .../<skill_id>/
+#
+# Legacy commands (run, stop, restart, list, logs, skill) still work via
+# session.py — pass --legacy as first arg.
+set -euo pipefail
+
+CONTAINER="agent-browser"
+WORKSPACE_HOST="$HOME/.bsession/workspace"
+WORKSPACE_CONTAINER="/workspace"
+
+if ! docker inspect -f '{{.State.Running}}' "$CONTAINER" &>/dev/null; then
+    echo "Container '$CONTAINER' is not running. Start with: docker compose up -d" >&2
+    exit 1
+fi
+
+if [[ "${1:-}" == "--legacy" ]]; then
+    shift
+    exec docker exec -i "$CONTAINER" python3 /app/session.py "$@"
+fi
+
+ENV_ARGS=()
+
+if [[ -n "${BSESSION_FORM:-}" ]]; then
+    if [[ ! -f "$BSESSION_FORM" ]]; then
+        echo "form not found: $BSESSION_FORM" >&2
+        exit 2
+    fi
+
+    FORM_ABS="$(cd "$(dirname "$BSESSION_FORM")" && pwd)/$(basename "$BSESSION_FORM")"
+    FORM_DIR="$(dirname "$FORM_ABS")"
+
+    if [[ "$(basename "$FORM_DIR")" == "forms" ]]; then
+        SKILL_DIR="$(dirname "$FORM_DIR")"
+    else
+        SKILL_DIR="$FORM_DIR"
+    fi
+    SKILL_ID="$(basename "$SKILL_DIR")"
+    REL_IN_SKILL="${FORM_ABS#$SKILL_DIR/}"
+
+    STAGED="$WORKSPACE_HOST/$SKILL_ID"
+    WORKSPACE_LOGICAL="$(cd "$WORKSPACE_HOST" && pwd)"
+
+    # Skip sync if the form already lives under the workspace mirror.
+    if [[ "$SKILL_DIR" != "$WORKSPACE_LOGICAL/$SKILL_ID" ]]; then
+        mkdir -p "$STAGED"
+        rsync -a "$SKILL_DIR/" "$STAGED/"
+    fi
+
+    ENV_ARGS+=(-e "BSESSION_FORM=$WORKSPACE_CONTAINER/$SKILL_ID/$REL_IN_SKILL")
+fi
+
+[[ -n "${BSESSION_PROFILE:-}" ]] && ENV_ARGS+=(-e "BSESSION_PROFILE=$BSESSION_PROFILE")
+
+exec docker exec -i "${ENV_ARGS[@]}" "$CONTAINER" python3 -m lib.cli "$@"
