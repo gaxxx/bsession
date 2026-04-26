@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# <Skill name>: <one-line description>
+# Usage: ./run.sh <form.toml>
+set -euo pipefail
+
+FORM="${1:-${BSESSION_FORM:-}}"
+[[ -z "$FORM" ]] && { echo "usage: $0 <form.toml>" >&2; exit 2; }
+[[ ! -f "$FORM" ]] && { echo "form not found: $FORM" >&2; exit 2; }
+
+export BSESSION_FORM="$FORM"
+
+# ── 1. Read form fields ───────────────────────────────────────────────
+# Replace these with your form's fields
+URL=$(bsession form get url)
+# OTHER_FIELD=$(bsession form get other_field)
+
+# ── 2. Navigate + bypass any protection ──────────────────────────────
+bsession nav "$URL" --wait 5
+bsession bypass cloudflare    # safe to call even if no Cloudflare; no-op then
+
+# ── 3. Interact (find, fill, click, etc.) ────────────────────────────
+# Examples — replace with your selectors:
+# INPUT=$(bsession find 'textbox|input.*name')
+# bsession fill "$INPUT" "$OTHER_FIELD"
+# BTN=$(bsession find '[Ss]ubmit|[Cc]heck')
+# bsession click "$BTN" --wait 3
+
+# ── 4. Extract result ────────────────────────────────────────────────
+# Regex against the accessibility-tree snapshot. Capture group → value.
+RESULT=$(bsession extract '<regex with (capture group)>' --max-lines 1 2>/dev/null || echo "(not found)")
+
+# ── 5. Output JSON ───────────────────────────────────────────────────
+bsession form dump | jq --arg r "$RESULT" '. + {result: $r}'

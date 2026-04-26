@@ -1,255 +1,157 @@
 # Project Overview
 
-Browser automation engine running inside a Docker container with `agent-browser`, Chromium, and VNC. Automations are defined as **skills** (declarative YAML) executed by a **toolset** (typed browser/bypass/notify wrappers), with **eval** tracking run metrics.
+Browser automation engine running inside a Docker container with `agent-browser`,
+Chromium, and VNC. Skills are **Claude Code skills** (`.claude/skills/<name>/`)
+containing a `SKILL.md` (Claude-facing routing), an optional `run.sh`
+(orchestration), and `forms/*.toml` (per-instance config). The `bsession` CLI
+exposes browser primitives — Claude/run.sh chains them to drive automation.
 
 ## Stack
 
 - **Runtime**: Node 22-slim Docker image with Chromium + Python 3
 - **Browser Control**: `agent-browser` CLI (Playwright-based, talks to Chrome via CDP)
-- **Display**: Xvfb (virtual framebuffer) + Fluxbox + x11vnc + noVNC (web VNC at port 6080)
-- **Session Manager**: `session.py` — manages Chrome + skill/script lifecycle
-- **Skill Engine**: YAML skill definitions → toolset → runner → eval
-- **Port Allocation**: SQLite (`/workspace/data/ports.db`) — auto-assigns CDP ports
-- **Notifications**: Webhooks (configurable URL)
+- **Display**: Xvfb + Fluxbox + x11vnc + noVNC (web VNC at port 6080)
+- **bsession CLI**: Primitive browser commands; manages per-profile Chrome lifecycle
+- **State**: SQLite at `/workspace/.bsession-state/state.db` (chromes table, LRU)
 
 ## Project Structure
 
 ```
-├── bsession              # Client-side CLI wrapper (runs session.py inside container)
-├── session.py            # Session manager (baked into image at /app/)
-├── run_skill.py          # Subprocess entry point for skill execution
+├── bsession                 # Host wrapper (rsync skill → workspace; docker exec lib.cli)
 ├── lib/
-│   ├── browser.py        # Core agent-browser CLI wrapper + snapshot parsing
-│   ├── chrome.py         # Chrome lifecycle (start, stop, stealth)
-│   ├── bypass/
-│   │   ├── __init__.py
-│   │   └── cloudflare.py # 3-tier Cloudflare Turnstile bypass
-│   ├── notify.py         # Webhook helpers
-│   ├── api.py            # HTTP API (port 8080)
-│   ├── toolset.py        # Typed tool wrappers (browser, bypass, notify, chrome, screenshot)
-│   ├── skill.py          # Skill data model (YAML loader, variable resolution)
-│   ├── runner.py         # Skill step executor + monitor loop
-│   ├── eval.py           # SQLite run metrics recorder
-│   └── builder.py        # Skill scaffolding + Claude/OpenClaw export
+│   ├── cli.py               # bsession primitive CLI (entrypoint inside container)
+│   ├── state.py             # SQLite chromes registry + LRU
+│   ├── ab.py                # agent-browser session-scoped runner
+│   ├── form.py              # form.toml resolution → (skill_id, form_id, profile)
+│   ├── chrome.py            # Chrome lifecycle + stealth ext
+│   ├── browser.py           # legacy ab() wrapper (kept for back-compat)
+│   ├── bypass/cloudflare.py # Cloudflare detection + bypass helpers
+│   ├── notify.py            # webhook helper
+│   ├── captcha.py           # captcha bounding box / screenshot
+│   └── api.py               # HTTP API on container port 8080
 ├── Dockerfile
 ├── docker-compose.yml
 ├── entrypoint.sh
-└── workspace/            # Mounted at /workspace — user content only
-    ├── conf/             # Session conf files (INI format)
-    │   └── uscis.conf
-    ├── skills/           # Skill definitions (YAML)
-    │   └── uscis_monitor.yaml
-    ├── data/             # Runtime data (persists across restarts)
-    │   ├── ports.db      # SQLite: port registry + run metrics
-    │   ├── pids/         # PID files
-    │   ├── logs/         # Session logs
-    │   ├── profile-*/    # Chrome profiles
-    │   └── stealth-ext/  # Anti-detection extension
-    └── scripts/          # Legacy monitor scripts
-        └── uscis.py
+└── .claude/skills/
+    └── uscis-check/
+        ├── SKILL.md         # Claude routing + usage
+        ├── run.sh           # orchestration script (chains bsession primitives)
+        └── forms/
+            └── example.toml
 ```
 
-## Architecture
-
-### Skill System (3 layers)
+## How a skill runs
 
 ```
-Skills (YAML)         ← what: declarative automation definitions
-  workspace/skills/     navigate → bypass → find → fill → click → extract
-
-Toolset (Python)      ← how: typed wrappers around browser primitives
-  lib/toolset.py        tools.browser.click(ref), tools.bypass.cloudflare()
-
-Engine (Python)       ← run: step executor + monitor loop + eval
-  lib/runner.py         walk steps, resolve {{vars}}, track state
-  lib/eval.py           record success/failure/duration per run
+user: "查(redacted)的 EAD"
+   ↓ Claude reads .claude/skills/uscis-check/SKILL.md, picks form
+   ↓ Claude runs: bash .claude/skills/uscis-check/run.sh forms/example.toml
+   ↓
+run.sh:
+  export BSESSION_FORM=...
+  bsession nav https://egov.uscis.gov/...    # primitive
+  bsession bypass cloudflare                  # primitive
+  bsession find textbox                       # primitive
+  bsession fill <ref> <receipt>               # primitive
+  bsession click <ref>                        # primitive
+  bsession extract 'heading "Case ([^"]*)"'   # primitive
+  ...
+   ↓ each `bsession` invocation:
+      host: rsync skill dir → ~/.bsession/workspace/<skill>/
+      docker exec agent-browser python3 -m lib.cli <subcommand>
+   ↓
+lib.cli: ensure_chrome(profile) → run agent-browser cmd → print result
 ```
 
-### Skill Format (YAML)
+## Skill conventions
 
-```yaml
-name: my_monitor
-description: "What this skill does"
-version: "1.0.0"
-params:
-  - name: MY_PARAM
-    description: "Required input"
-    required: true
-steps:
-  - action: navigate
-    url: "https://example.com"
-    wait: 5
-  - action: bypass
-    type: cloudflare
-  - action: find
-    name: my_input
-    patterns: [textbox, "input.*name"]
-  - action: fill
-    ref: "{{my_input}}"
-    value: "{{MY_PARAM}}"
-  - action: click
-    ref: "{{submit_button}}"
-    wait: 5
-  - action: extract
-    name: result_text
-    pattern: 'heading "([^"]*)"'
-result:
-  title: "{{result_text}}"
-monitor:                    # optional: run as recurring monitor
-  interval: "3600"
-  change_field: title
-  notify:
-    webhook: "{{WEBHOOK_URL}}"
+- **Skill dir layout**: `<skill>/SKILL.md` + `<skill>/forms/<basename>.toml` + optional `<skill>/run.sh`
+- **Profile**: defaults to `skill_id` (parent dir name) — same-skill forms share one Chrome + cookies. Override per form with `_bsession_profile = "..."` in toml.
+- **Form schema**: any TOML fields. Reserved keys start with `_bsession_*`.
+- **Output**: run.sh prints JSON to stdout (one line per case).
+
+## bsession primitives
+
+```
+bsession nav <url> [--wait N]
+bsession snapshot [-i] [-c] [-d N]
+bsession find <pattern> [--all]
+bsession click <ref> [--wait N]
+bsession fill <ref> <value>
+bsession type <ref> <value>
+bsession select <ref> <value>
+bsession extract <regex> [--max-lines N] [--exclude P]
+bsession wait <seconds>
+bsession wait-for <pattern> [--timeout N] [--interval N]
+bsession bypass cloudflare [--max-wait N]
+bsession screenshot [--output FILE]
+bsession notify <url> --json '...'
+
+bsession form get <key>
+bsession form dump
+bsession form list
+
+bsession session list [--json]
+bsession session close <profile>
+bsession session forget <profile>            # close + delete profile dir
 ```
 
-### Step Actions
+`BSESSION_FORM` env var sets the form context for all primitives.
+`BSESSION_PROFILE` overrides the profile (otherwise from form).
 
-| Action | Params | Description |
-|--------|--------|-------------|
-| `navigate` | `url`, `wait` | Open URL, wait for load |
-| `bypass` | `type` (cloudflare) | Handle protection pages |
-| `find` | `name`, `patterns`, `optional` | Find element ref by trying patterns |
-| `fill` | `ref`, `value` | Clear + fill input field |
-| `clear` | `ref` | Clear input field |
-| `click` | `ref`, `wait` | Click element |
-| `type` | `ref`, `value` | Type text character by character |
-| `select` | `ref`, `value`, `skip_if_empty` | Select dropdown option by text |
-| `extract` | `name`, `pattern`, `exclude`, `max_lines` | Regex extract from snapshot |
-| `wait` | `seconds` | Sleep |
-| `wait_for` | `pattern`, `timeout`, `interval` | Poll until pattern appears in snapshot |
-| `transform` | `name`, `source`, `operation`, ... | Transform a value (strip, replace, regex_extract, strip_chars) |
-| `snapshot` | `name` | Take + store a snapshot |
-| `check` | `snapshot_pattern`, `error` | Assert condition |
+## Session model
 
-### Toolset API
+- One Chrome process per profile (LRU evicted, cap = `BSESSION_MAX_PROFILES`, default 5)
+- Each profile has its own user-data-dir at `/workspace/.bsession-state/profiles/<profile>/`
+- agent-browser is invoked with `--session bs-<profile>` so profiles don't interfere
+- Chrome started with `--remote-allow-origins=*` so CDP HTTP endpoints work
 
-```python
-tools.browser.navigate(url, wait=3)
-tools.browser.snapshot() -> str
-tools.browser.click(ref)
-tools.browser.fill(ref, value)
-tools.browser.find_first(snapshot, patterns) -> str | None
-tools.bypass.is_cloudflare(snapshot) -> bool
-tools.bypass.cloudflare(snapshot, max_wait=300) -> bool
-tools.bypass.is_blocked(snapshot) -> bool
-tools.notify.webhook(url, payload) -> bool
-tools.chrome.alive() -> bool
-tools.screenshot.capture() -> bytes
-```
+## Cloudflare bypass
 
-### Skill Builder Workflow (5 steps)
+- Tier 1: CDP iframe click on the Turnstile checkbox (works most of the time with stealth flags)
+- Tier 2: hand off to manual VNC at http://localhost:6080/vnc.html, poll until resolved
+- **Visual CAPTCHAs** (image grids, distorted text): always go straight to VNC. Don't try programmatically.
 
-1. **Name & describe**: `bsession skill create my_skill -d "description"`
-2. **Define steps**: Edit the generated YAML in `workspace/skills/my_skill.yaml`
-3. **Run & test**: `bsession skill run my_skill` — executes once, shows result
-4. **Export**: `bsession skill export my_skill -f claude` or `-f openclaw`
-5. **Iterate**: Check eval with `bsession skill eval my_skill`, update YAML
+## Anti-detection
 
-### Container Startup
+- `--remote-allow-origins=*` on Chrome (needed for CDP HTTP)
+- `--disable-blink-features=AutomationControlled` removes automation banner
+- Stealth extension at `/workspace/.bsession-state/stealth-ext/` patches `navigator.webdriver`
+- Persistent profile per skill — Cloudflare cookies survive container restarts
+
+## Container lifecycle
 
 ```
 docker compose up -d
   → entrypoint.sh:
-    1. mkdir -p /workspace/{conf,data,scripts,skills}
+    1. mkdir /workspace
     2. Xvfb :99, Fluxbox, x11vnc, noVNC
-    3. API server on port 8080
-    4. tail -f /dev/null (keep alive)
+    3. python3 /app/lib/api.py (port 8080)
+    4. tail -f /dev/null
 ```
 
-### Session Lifecycle
+Long-running container; Chrome processes started on demand by `bsession`.
 
-Sessions are defined by `.conf` files in `workspace/conf/`. Conf supports both `skill` and `script` modes:
+## Legacy
 
-```ini
-# Skill-based (recommended)
-[session]
-skill = uscis_monitor
-
-[env]
-RECEIPT_NUMBER = IOE0000000000
-CHECK_INTERVAL = 1800
-
-# Legacy script-based
-[session]
-script = /workspace/scripts/uscis.py
-
-[env]
-RECEIPT_NUMBER = IOE0000000000
-```
-
-```
-bsession run <id>     → resolve port → start Chrome → launch skill/script
-bsession stop <id>    → kill process group + Chrome
-bsession restart <id> → stop + start
-```
-
-### Eval System
-
-Run metrics stored in `ports.db`:
-
-```
-bsession skill eval uscis
-  Session: uscis
-  Total runs:    47
-  Success rate:  93.6%
-  Avg duration:  12340ms
-  P95 duration:  18200ms
-  Last error:    Cloudflare bypass failed
-```
-
-## CLI Reference
-
-```bash
-# Session management
-./bsession list                          # show all sessions
-./bsession run uscis                     # start (skill or script)
-./bsession stop uscis                    # stop
-./bsession restart uscis                 # restart
-./bsession logs uscis -n 100             # tail logs
-
-# Skill builder
-./bsession skill list                    # list available skills
-./bsession skill create price_watch      # scaffold new skill YAML
-./bsession skill show uscis_monitor      # show skill details
-./bsession skill run uscis_monitor       # test run (once)
-./bsession skill eval uscis              # show run history + stats
-./bsession skill export uscis_monitor -f claude    # export as Claude skill
-./bsession skill export uscis_monitor -f openclaw  # export as OpenClaw tool
-```
+`bsession --legacy <cmd>` forwards to the container's older `session.py`
+(TOML-based session manager with `instructions`/`data` fields). Used by
+existing skills that haven't been migrated to the `.claude/skills/` format yet.
 
 ## HTTP API (port 8080)
 
 ```
-POST /run          {"command": "list|run|stop", "args": ["session_id"]}
-POST /ab           {"port": 9222, "command": "snapshot|click|open", "args": [...]}
+POST /run          {"command": "list|run|stop", "args": [...]}      # legacy session.py wrapper
+POST /ab           {"port": 9222, "command": "snapshot", "args": [...]}
 POST /chrome/start {"port": 9222, "profile": "..."}
 POST /chrome/stop  {"port": 9222}
-GET  /screenshot/<session_id>    — PNG of active tab
-GET  /screenshot?port=9222       — PNG by CDP port
-GET  /skills                     — list available skills (JSON)
-GET  /eval/<session_id>          — run history + summary (JSON)
+POST /browse       {"port": 9222, "url": "...", "wait": 5}
+POST /click        {"port": 9222, "ref": "e5"}
+POST /fill         {"port": 9222, "ref": "e3", "value": "..."}
+POST /snapshot     {"port": 9222}
+GET  /screenshot?port=9222           — PNG of active tab
+GET  /screenshot/<session_id>        — PNG by session name (legacy)
+GET  /captcha/screenshot?port=9222   — PNG of captcha bounding box
+GET  /captcha/bounds?port=9222       — captcha bounding box JSON
 GET  /health
 ```
-
-## Key Conventions
-
-- `lib/browser.py` wraps `agent-browser` CLI: `ab(port, "snapshot")`, `ab_quiet(port, "click", ref)`
-- `find_ref(snapshot, pattern)` — regex search on accessibility tree lines, extracts `[ref=xxx]`
-- Each session: own Chrome instance, CDP port, browser profile, log file
-- Skills use `{{variable}}` syntax for parameter interpolation
-- Toolset is bound to a CDP port at construction — skills never see port numbers
-- Eval records every run automatically (success/failure/duration/error)
-- Legacy scripts still work via `script = ...` in conf files
-
-## Anti-Detection
-
-- **No `--enable-automation` flag** — Chrome launched manually
-- **`--disable-blink-features=AutomationControlled`** — removes automation banner
-- **Stealth extension** (`/workspace/data/stealth-ext/`): patches `navigator.webdriver`
-- **Persistent browser profile** — Cloudflare cookies survive restarts
-
-## Cloudflare Bypass Strategy (3 tiers)
-
-1. **CDP iframe click** (most reliable): Find Turnstile iframe in snapshot → click ref
-2. **xdotool** (fallback): Real X11 mouse events with human-like movement
-3. **Manual VNC** (last resort): Polls while user solves at `http://localhost:6080/vnc.html`

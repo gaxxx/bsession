@@ -8,7 +8,7 @@ import urllib.request
 
 
 CHROME_BIN = os.environ.get("CHROME_BIN", "/usr/lib/chromium/chromium")
-STEALTH_EXT = "/workspace/data/stealth-ext"
+STEALTH_EXT = os.environ.get("STEALTH_EXT_DIR", "/workspace/data/stealth-ext")
 
 
 def ensure_stealth_ext():
@@ -61,6 +61,7 @@ def start_chrome(port, profile_dir, start_url="about:blank"):
             CHROME_BIN,
             f"--remote-debugging-port={port}",
             f"--user-data-dir={profile_dir}",
+            "--remote-allow-origins=*",
             "--disable-blink-features=AutomationControlled",
             "--disable-infobars", "--no-first-run",
             "--no-default-browser-check", "--no-sandbox",

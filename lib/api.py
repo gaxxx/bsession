@@ -18,8 +18,6 @@ Endpoints:
   GET  /captcha/screenshot/<session_id>      — PNG of captcha area (by session name)
   GET  /captcha/bounds?port=9222             — captcha bounding box JSON
   GET  /captcha/bounds/<session_id>          — captcha bounding box JSON
-  GET  /skills                      — list available skills
-  GET  /eval/<session_id>           — run history and summary stats
   GET  /health
 """
 
@@ -115,37 +113,6 @@ class Handler(BaseHTTPRequestHandler):
                     self._json_response(404, {"error": "no captcha element found"})
                     return
                 self._json_response(200, {"bounds": bounds})
-            except Exception as e:
-                self._json_response(500, {"error": str(e)})
-
-        elif parsed.path == "/skills":
-            try:
-                from lib.skill import list_skills
-                self._json_response(200, {"skills": list_skills()})
-            except Exception as e:
-                self._json_response(500, {"error": str(e)})
-
-        elif parsed.path.startswith("/eval/"):
-            try:
-                session_id = parsed.path.split("/eval/", 1)[1]
-                from lib.eval import EvalRecorder
-                recorder = EvalRecorder()
-                qs = parse_qs(parsed.query)
-                limit = int(qs.get("limit", [20])[0])
-                summary = recorder.get_summary(session_id)
-                runs = recorder.get_runs(session_id, limit=limit)
-                self._json_response(200, {
-                    "session_id": session_id,
-                    "summary": {
-                        "total_runs": summary.total_runs,
-                        "success_rate": summary.success_rate,
-                        "avg_duration_ms": summary.avg_duration_ms,
-                        "p95_duration_ms": summary.p95_duration_ms,
-                        "last_error": summary.last_error,
-                        "last_run": summary.last_run,
-                    },
-                    "runs": runs,
-                })
             except Exception as e:
                 self._json_response(500, {"error": str(e)})
 

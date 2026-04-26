@@ -23,6 +23,11 @@ CAPTCHA_SELECTORS = [
     ".g-recaptcha",
     "#captcha",
     ".captcha",
+    "img.LBD_CaptchaImage",          # BotDetect (DS-160, other .gov sites)
+    "img[id*='CaptchaImage']",
+    "img[src*='BotDetectCaptcha']",
+    "img[alt='CAPTCHA']",
+    "img[alt='Captcha']",
 ]
 
 # Padding (px) added around the detected element when clipping.
