@@ -1,11 +1,31 @@
 ---
 name: bsession
-description: Build browser automation skills using bsession primitives (Chrome + Cloudflare-aware). Use when the user wants to create a new browser automation, monitor a website, scrape data, or build a recurring check. Triggers on "build a skill", "monitor a website", "scrape", "automate browser", "建个监控", "写个 skill", "自动化".
+description: Build *headed* browser automation skills (visible Chromium with VNC). Use only when the target needs a real browser fingerprint or human handoff — Cloudflare Turnstile, CAPTCHA, JS-heavy SPA login flows, persistent browser cookies. For unprotected sites with public HTML or APIs, prefer headless tools (playwright headless, requests + bs4, curl). Triggers on "Cloudflare", "Turnstile", "CAPTCHA-aware", "USCIS-style monitoring", "site behind bot protection", "建个浏览器监控", "需要登录的站点".
 ---
 
 # Building skills with bsession
 
-Use this skill when the user wants to create a new browser automation. It provides primitives + conventions; you author the SKILL.md, run.sh, and forms for the new skill.
+bsession is a **headed browser automation engine** — Chromium runs with a visible UI inside a Docker container, accessible via VNC. This is deliberate: it lets the browser pass anti-bot fingerprinting, and lets a human take over via VNC when something asks for human verification.
+
+## When to use bsession
+
+- Target site has **Cloudflare Turnstile, hCaptcha, or similar bot detection**
+- A step **needs human input** at runtime (CAPTCHA, 2FA prompt) and you want VNC handoff
+- You need **persistent login cookies** that survive across runs
+- The target is a JS-heavy SPA where headless detection or rendering quirks bite
+
+## When NOT to use bsession
+
+- Site has a clean **public API** → just `curl` / `requests`
+- Page is plain HTML with no anti-bot → headless `playwright` or `requests + bs4` is faster + lighter
+- You need to scale to **thousands of pages in parallel** → bsession's per-profile Chrome model isn't designed for that
+- Just downloading static files → `wget` / `curl`
+
+bsession trades efficiency for survival on protected sites. Don't pay that cost when you don't have to.
+
+## What this skill provides
+
+Primitives (a CLI), conventions (skill dir layout), and templates. You author the per-skill `SKILL.md`, `run.sh`, and `forms/*.toml`.
 
 ## Skill anatomy
 
