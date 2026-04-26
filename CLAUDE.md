@@ -43,7 +43,7 @@ exposes browser primitives — Claude/run.sh chains them to drive automation.
 ## How a skill runs
 
 ```
-user: "查(redacted)的 EAD"
+user: "check my USCIS case"
    ↓ Claude reads .claude/skills/uscis-check/SKILL.md, picks form
    ↓ Claude runs: bash .claude/skills/uscis-check/run.sh forms/example.toml
    ↓

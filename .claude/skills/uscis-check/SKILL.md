@@ -5,15 +5,15 @@ description: Check USCIS case status via bsession (handles Cloudflare). Triggers
 
 # USCIS Case Status
 
-Check USCIS case status using bsession. Each case has its own form file under `forms/`.
+Check USCIS case status using bsession. Each case is a `.toml` file under `forms/` — one per receipt number.
 
 ## Available cases
 
 | Form | Person | Receipt |
 |------|--------|---------|
-| `forms/example.toml` | Example Person | WAC1234567890 |
+| `forms/example.toml` | (example placeholder) | WAC1234567890 |
 
-Add more by dropping a `.toml` file into `forms/` with the same shape.
+Add real cases by dropping new `.toml` files into `forms/` with the same shape.
 
 ## Usage
 
@@ -31,7 +31,7 @@ done
 
 ## Routing
 
-- "查(redacted)的 EAD" / "Example Person EAD status" → `forms/example.toml`
+- "<person> <case-type> status" → matching `forms/<basename>.toml`
 - "USCIS status" / "case status" without specifics → ask which case, or run all
 
 ## Output
@@ -39,7 +39,7 @@ done
 Each run prints one JSON line:
 
 ```json
-{"person": "Example Person", "case_type": "I-765 EAD", "receipt_number": "WAC...", "status": "Was Approved", "detail": "..."}
+{"person": "...", "case_type": "I-765 EAD", "receipt_number": "WAC...", "status": "Was Approved", "detail": "..."}
 ```
 
 If status changed from a previous run, highlight with ⚠️.
