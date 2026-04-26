@@ -70,7 +70,7 @@ def ensure_chrome(profile):
 def find_ref(snapshot, pattern):
     for line in snapshot.splitlines():
         if re.search(pattern, line, re.IGNORECASE):
-            m = re.search(r"\[ref=(\w+)\]", line)
+            m = re.search(r"\bref=(\w+)", line)
             if m:
                 return m.group(1)
     return None
@@ -80,7 +80,7 @@ def find_all_refs(snapshot, pattern):
     out = []
     for line in snapshot.splitlines():
         if re.search(pattern, line, re.IGNORECASE):
-            m = re.search(r"\[ref=(\w+)\]", line)
+            m = re.search(r"\bref=(\w+)", line)
             if m:
                 out.append(m.group(1))
     return out
