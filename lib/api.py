@@ -1,28 +1,19 @@
 """Lightweight HTTP API for agent-browser container.
 
-Exposes bsession commands over HTTP so other containers on the same
-Docker network can control browser sessions without docker exec.
+Exposes browser primitives over HTTP so other containers on the same
+Docker network can drive Chrome sessions without docker exec.
 
 Endpoints:
-  POST /run          {"command": "list"}
-  POST /run          {"command": "run", "args": ["uscis"]}
-  POST /run          {"command": "stop", "args": ["uscis"]}
-  POST /ab           {"port": 9222, "command": "snapshot"}
-  POST /ab           {"port": 9222, "command": "open", "args": ["https://..."]}
-  POST /ab           {"port": 9222, "command": "click", "args": ["e5"]}
-  POST /chrome/start {"port": 9222, "profile": "/workspace/data/profile-tmp"}
-  POST /chrome/stop  {"port": 9222}
-  GET  /screenshot?port=9222        — PNG of the active tab (by CDP port)
-  GET  /screenshot/<session_id>     — PNG of the active tab (by session name)
-  GET  /captcha/screenshot?port=9222         — PNG of captcha area (by CDP port)
-  GET  /captcha/screenshot/<session_id>      — PNG of captcha area (by session name)
-  GET  /captcha/bounds?port=9222             — captcha bounding box JSON
-  GET  /captcha/bounds/<session_id>          — captcha bounding box JSON
+  POST /ab                {"port": 9222, "command": "snapshot", "args": [...]}
+  POST /chrome/{start,stop,alive}
+  POST /{browse,click,fill,snapshot}
+  GET  /screenshot?port=9222
+  GET  /captcha/screenshot?port=9222
+  GET  /captcha/bounds?port=9222
   GET  /health
 """
 
 import json
-import re
 import subprocess
 import sys
 from http.server import HTTPServer, BaseHTTPRequestHandler
@@ -31,24 +22,6 @@ from urllib.parse import urlparse, parse_qs
 sys.path.insert(0, "/app")
 from lib.browser import start_chrome, stop_chrome, chrome_alive, capture_screenshot
 from lib.captcha import find_captcha_bounds, capture_captcha_screenshot
-
-
-DB_PATH = "/workspace/data/ports.db"
-
-
-def _lookup_port(session_id: str) -> int | None:
-    """Resolve a session name to its CDP port from the SQLite registry."""
-    import sqlite3
-    db_path = DB_PATH
-    try:
-        db = sqlite3.connect(db_path)
-        row = db.execute(
-            "SELECT port FROM ports WHERE session_id = ?", (session_id,)
-        ).fetchone()
-        db.close()
-        return row[0] if row else None
-    except Exception:
-        return None
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -120,47 +93,17 @@ class Handler(BaseHTTPRequestHandler):
             self._json_response(404, {"error": "not found"})
 
     def _resolve_screenshot_port(self, parsed) -> int | None:
-        """Resolve CDP port from query param or URL path segment.
-
-        GET /screenshot?port=9222                → use port directly
-        GET /screenshot/<session_id>             → look up port from DB
-        GET /captcha/screenshot?port=9222        → use port directly
-        GET /captcha/screenshot/<session_id>     → look up port from DB
-        GET /captcha/bounds?port=9222            → use port directly
-        GET /captcha/bounds/<session_id>         → look up port from DB
-        """
+        """Resolve CDP port from ?port= query param. Returns None if missing."""
         qs = parse_qs(parsed.query)
         if "port" in qs:
             return int(qs["port"][0])
-
-        # Extract session_id from path: /screenshot/uscis or /captcha/screenshot/uscis or /captcha/bounds/uscis
-        match = re.search(r"/([a-zA-Z0-9_-]+)$", parsed.path)
-        if match:
-            segment = match.group(1)
-            # Skip if segment is a known endpoint name
-            if segment not in ("screenshot", "bounds", "captcha"):
-                return _lookup_port(segment)
-
         return None
 
     def do_POST(self):
         try:
             body = self._read_body()
 
-            if self.path == "/run":
-                cmd = body.get("command", "list")
-                args = body.get("args", [])
-                result = subprocess.run(
-                    ["python3", "/app/session.py", cmd] + args,
-                    capture_output=True, text=True, timeout=30,
-                )
-                self._json_response(200, {
-                    "stdout": result.stdout,
-                    "stderr": result.stderr,
-                    "returncode": result.returncode,
-                })
-
-            elif self.path == "/ab":
+            if self.path == "/ab":
                 port = body.get("port", 9222)
                 cmd = body.get("command", "snapshot")
                 args = body.get("args", [])

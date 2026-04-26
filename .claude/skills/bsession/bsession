@@ -10,9 +10,6 @@
 # Skill dir derivation:
 #   .../<skill_id>/forms/<basename>.toml  → skill_dir = .../<skill_id>/
 #   .../<skill_id>/<basename>.toml        → skill_dir = .../<skill_id>/
-#
-# Legacy commands (run, stop, restart, list, logs, skill) still work via
-# session.py — pass --legacy as first arg.
 set -euo pipefail
 
 CONTAINER="agent-browser"
@@ -22,11 +19,6 @@ WORKSPACE_CONTAINER="/workspace"
 if ! docker inspect -f '{{.State.Running}}' "$CONTAINER" &>/dev/null; then
     echo "Container '$CONTAINER' is not running. Start with: docker compose up -d" >&2
     exit 1
-fi
-
-if [[ "${1:-}" == "--legacy" ]]; then
-    shift
-    exec docker exec -i "$CONTAINER" python3 /app/session.py "$@"
 fi
 
 ENV_ARGS=()

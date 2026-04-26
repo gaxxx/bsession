@@ -24,7 +24,7 @@ exposes browser primitives — Claude/run.sh chains them to drive automation.
 │   ├── ab.py                # agent-browser session-scoped runner
 │   ├── form.py              # form.toml resolution → (skill_id, form_id, profile)
 │   ├── chrome.py            # Chrome lifecycle + stealth ext
-│   ├── browser.py           # legacy ab() wrapper (kept for back-compat)
+│   ├── browser.py           # ab() wrapper + snapshot helpers (also used by api.py)
 │   ├── bypass/cloudflare.py # Cloudflare detection + bypass helpers
 │   ├── notify.py            # webhook helper
 │   ├── captcha.py           # captcha bounding box / screenshot
@@ -132,16 +132,9 @@ docker compose up -d
 
 Long-running container; Chrome processes started on demand by `bsession`.
 
-## Legacy
-
-`bsession --legacy <cmd>` forwards to the container's older `session.py`
-(TOML-based session manager with `instructions`/`data` fields). Used by
-existing skills that haven't been migrated to the `.claude/skills/` format yet.
-
 ## HTTP API (port 8080)
 
 ```
-POST /run          {"command": "list|run|stop", "args": [...]}      # legacy session.py wrapper
 POST /ab           {"port": 9222, "command": "snapshot", "args": [...]}
 POST /chrome/start {"port": 9222, "profile": "..."}
 POST /chrome/stop  {"port": 9222}
@@ -150,7 +143,6 @@ POST /click        {"port": 9222, "ref": "e5"}
 POST /fill         {"port": 9222, "ref": "e3", "value": "..."}
 POST /snapshot     {"port": 9222}
 GET  /screenshot?port=9222           — PNG of active tab
-GET  /screenshot/<session_id>        — PNG by session name (legacy)
 GET  /captcha/screenshot?port=9222   — PNG of captcha bounding box
 GET  /captcha/bounds?port=9222       — captcha bounding box JSON
 GET  /health
