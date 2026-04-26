@@ -1,34 +1,33 @@
 #!/usr/bin/env bash
-# One-line installer for bsession browser automation + Claude Code skill.
+# One-line installer for bsession.
 #
 # Usage:
-#   curl -fsSL https://gaxxx.me/bsession.sh | bash
-#   curl -fsSL https://gaxxx.me/bsession.sh | bash -s -- --vnc-password secret
-#   curl -fsSL https://gaxxx.me/bsession.sh | bash -s -- --workspace ~/my-workspace
-
+#   curl -fsSL https://raw.githubusercontent.com/gaxxx/bsession/main/install.sh | bash
+#   curl -fsSL .../install.sh | bash -s -- --vnc-password secret
+#   curl -fsSL .../install.sh | bash -s -- --workspace ~/work/bsession
+#
+# Local equivalent (from a clone):
+#   bash .claude/skills/bsession/scripts/install.sh
 set -euo pipefail
 
-REPO="https://github.com/gaxxx/bsession.git"
-BSESSION_HOME="$HOME/.bsession"
-TMPDIR="$(mktemp -d)"
+REPO="${BSESSION_REPO:-https://github.com/gaxxx/bsession.git}"
+SOURCE_DIR="${BSESSION_SOURCE:-$HOME/.bsession/source}"
 
 info()  { printf "\033[32m[+]\033[0m %s\n" "$*"; }
-warn()  { printf "\033[33m[!]\033[0m %s\n" "$*"; }
-fail()  { printf "\033[31m[x]\033[0m %s\n" "$*"; exit 1; }
-check() { command -v "$1" &>/dev/null; }
+fail()  { printf "\033[31m[x]\033[0m %s\n" "$*" >&2; exit 1; }
 
-cleanup() { rm -rf "$TMPDIR"; }
-trap cleanup EXIT
+command -v docker >/dev/null  || fail "docker not found"
+command -v git    >/dev/null  || fail "git not found"
 
-# ── Check prerequisites ──────────────────────────────────────────────
-check docker || fail "Docker not found. Install Docker first: https://docs.docker.com/get-docker/"
-docker info &>/dev/null || fail "Docker daemon not running. Start Docker and try again."
-check git || fail "git not found. Install git first."
+# ── Clone or update source ──────────────────────────────────────────
+if [[ -d "$SOURCE_DIR/.git" ]]; then
+    info "Updating $SOURCE_DIR"
+    git -C "$SOURCE_DIR" pull --quiet --ff-only || fail "git pull failed; resolve manually"
+else
+    info "Cloning $REPO → $SOURCE_DIR"
+    mkdir -p "$(dirname "$SOURCE_DIR")"
+    git clone --depth 1 --quiet "$REPO" "$SOURCE_DIR"
+fi
 
-# ── Clone repo to temp dir ───────────────────────────────────────────
-info "Downloading bsession..."
-git clone --depth 1 --quiet "$REPO" "$TMPDIR/bsession"
-
-# ── Run the full installer ───────────────────────────────────────────
-info "Running installer..."
-bash "$TMPDIR/bsession/.claude/skills/browser/scripts/install.sh" "$@"
+# ── Run the real installer ──────────────────────────────────────────
+exec bash "$SOURCE_DIR/.claude/skills/bsession/scripts/install.sh" "$@"
