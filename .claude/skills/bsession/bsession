@@ -1,17 +1,37 @@
 #!/usr/bin/env bash
-# Host-side wrapper: forwards to lib/cli.py running inside the container.
+# Host-side wrapper for bsession.
 #
-# When BSESSION_FORM is set (host path anywhere on disk), the form's
-# whole skill dir is rsynced into ~/.bsession/workspace/<skill_id>/ so
-# the container can read it via the existing /workspace mount. Skills
-# can stay in your project (.claude/skills/...) — the sync is delta-only
-# and runs on every command.
+# Default (Docker mode): forwards to lib/cli.py inside the agent-browser
+# container. Forms get rsynced into the workspace mount so they live
+# wherever you want on the host.
 #
-# Skill dir derivation:
+# Local mode (BSESSION_LOCAL=1): runs lib/cli.py natively on the host.
+# Uses the host's Chrome (better fingerprint vs containerized Chromium,
+# no /dev/shm limits, no VNC layer needed). Requires:
+#   - agent-browser on PATH (npm i -g agent-browser)
+#   - Google Chrome installed (or set CHROME_BIN)
+#
+# Skill dir derivation (Docker mode only):
 #   .../<skill_id>/forms/<basename>.toml  → skill_dir = .../<skill_id>/
 #   .../<skill_id>/<basename>.toml        → skill_dir = .../<skill_id>/
 set -euo pipefail
 
+# ── Local mode: run natively, skip Docker ────────────────────────────
+if [[ "${BSESSION_LOCAL:-}" == "1" ]]; then
+    # Resolve repo root relative to this script:
+    # <repo>/.claude/skills/bsession/bsession  → climb 3 dirs
+    SCRIPT="$(readlink -f "$0" 2>/dev/null || python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$0")"
+    SOURCE="$(cd "$(dirname "$SCRIPT")/../../.." && pwd)"
+
+    export BSESSION_STATE_DIR="${BSESSION_STATE_DIR:-$HOME/.bsession/state}"
+    export BSESSION_PROFILES_DIR="${BSESSION_PROFILES_DIR:-$BSESSION_STATE_DIR/profiles}"
+    export STEALTH_EXT_DIR="${STEALTH_EXT_DIR:-$BSESSION_STATE_DIR/stealth-ext}"
+    mkdir -p "$BSESSION_STATE_DIR" "$BSESSION_PROFILES_DIR"
+
+    PYTHONPATH="$SOURCE" exec python3 -m lib.cli "$@"
+fi
+
+# ── Docker mode (default) ────────────────────────────────────────────
 CONTAINER="agent-browser"
 # Override BSESSION_WORKSPACE if your container mounts a different host dir
 # (e.g. ~/.openclaw/workspace/bsession when running with docker-compose.openclaw.yml).
@@ -20,6 +40,7 @@ WORKSPACE_CONTAINER="/workspace"
 
 if ! docker inspect -f '{{.State.Running}}' "$CONTAINER" &>/dev/null; then
     echo "Container '$CONTAINER' is not running. Start with: docker compose up -d" >&2
+    echo "(or set BSESSION_LOCAL=1 to skip Docker and run natively)" >&2
     exit 1
 fi
 

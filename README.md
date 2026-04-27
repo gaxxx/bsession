@@ -56,6 +56,26 @@ bash ~/.bsession/source/.claude/skills/bsession/scripts/install.sh --uninstall
 
 (Stops the container, removes `bsession` from PATH, removes the skill symlink. Workspace data is preserved.)
 
+### Native mode (opt-in)
+
+Docker is the default — it gives you reproducible Linux Chromium and the same VNC handoff path on any machine. But on a personal Mac, running the host's real Chrome gives a stronger fingerprint (Akamai, deeply-fingerprinting sites pass more easily) and skips the Docker exec round-trip.
+
+Set `BSESSION_LOCAL=1` to switch:
+
+```bash
+BSESSION_LOCAL=1 bsession nav https://www.costco.com
+BSESSION_LOCAL=1 bsession session list
+```
+
+State lives at `~/.bsession/state/` (separate from the Docker workspace). Same primitives, same skill conventions.
+
+Requirements:
+
+- `agent-browser` on PATH: `npm install -g agent-browser`
+- Google Chrome installed at the standard macOS path (or set `CHROME_BIN`)
+
+When to use it: Costco / Akamai / heavy fingerprinting sites where Docker mode struggles, or when you just want to see the browser on your desktop instead of via VNC. For OpenClaw integration or shared/server-side runs, stick with Docker.
+
 ### OpenClaw integration
 
 If `~/.openclaw/workspace/skills/` exists, the installer also symlinks the skill into `~/.openclaw/workspace/skills/bsession/` so OpenClaw can invoke it.

@@ -1,14 +1,38 @@
-"""Chrome lifecycle management — launch, stop, health check, stealth setup."""
+"""Chrome lifecycle management — launch, stop, health check, stealth setup.
+
+Detects whether we're inside the bsession Docker container or running
+natively on the host (BSESSION_LOCAL=1) and adjusts Chrome flags +
+default binary path accordingly.
+"""
 
 import json
 import os
+import platform
 import subprocess
 import time
 import urllib.request
 
 
-CHROME_BIN = os.environ.get("CHROME_BIN", "/usr/lib/chromium/chromium")
-STEALTH_EXT = os.environ.get("STEALTH_EXT_DIR", "/workspace/data/stealth-ext")
+IN_DOCKER = os.path.exists("/.dockerenv")
+
+
+def _default_chrome_bin():
+    if IN_DOCKER:
+        return "/usr/lib/chromium/chromium"
+    if platform.system() == "Darwin":
+        return "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+    # Linux native
+    for p in ("/usr/bin/google-chrome", "/usr/bin/chromium", "/usr/lib/chromium/chromium"):
+        if os.path.exists(p):
+            return p
+    return "chromium"
+
+
+CHROME_BIN = os.environ.get("CHROME_BIN", _default_chrome_bin())
+STEALTH_EXT = os.environ.get(
+    "STEALTH_EXT_DIR",
+    "/workspace/data/stealth-ext" if IN_DOCKER else os.path.expanduser("~/.bsession/state/stealth-ext"),
+)
 
 
 def ensure_stealth_ext():
@@ -44,7 +68,6 @@ def start_chrome(port, profile_dir, start_url="about:blank"):
     time.sleep(1)
     os.makedirs(profile_dir, exist_ok=True)
     # Remove stale profile locks (e.g. from container restart)
-    # Use lexists() — SingletonLock is a symlink that becomes broken when Chrome dies
     for lock in ("SingletonLock", "SingletonCookie", "SingletonSocket"):
         lock_path = os.path.join(profile_dir, lock)
         try:
@@ -53,31 +76,36 @@ def start_chrome(port, profile_dir, start_url="about:blank"):
             pass
     ensure_stealth_ext()
 
+    flags = [
+        CHROME_BIN,
+        f"--remote-debugging-port={port}",
+        f"--user-data-dir={profile_dir}",
+        "--remote-allow-origins=*",
+        "--disable-blink-features=AutomationControlled",
+        "--disable-infobars", "--no-first-run",
+        "--no-default-browser-check",
+        "--disable-background-networking", "--disable-sync",
+        "--window-size=1280,900",
+        f"--load-extension={STEALTH_EXT}",
+    ]
     env = os.environ.copy()
-    env["DISPLAY"] = ":99"
+
+    if IN_DOCKER:
+        # Container-only: Xvfb display, no sandbox (root user), no GPU,
+        # spill /dev/shm to disk.
+        env["DISPLAY"] = ":99"
+        flags += [
+            "--no-sandbox", "--disable-gpu", "--test-type",
+            "--disable-dev-shm-usage",
+        ]
+
+    flags.append(start_url)
 
     subprocess.Popen(
-        [
-            CHROME_BIN,
-            f"--remote-debugging-port={port}",
-            f"--user-data-dir={profile_dir}",
-            "--remote-allow-origins=*",
-            "--disable-blink-features=AutomationControlled",
-            "--disable-infobars", "--no-first-run",
-            "--no-default-browser-check", "--no-sandbox",
-            "--disable-gpu", "--test-type",
-            "--disable-background-networking", "--disable-sync",
-            # /dev/shm in Docker is 64MB by default; heavy pages (Costco etc.)
-            # OOM-crash the renderer. Spill shared memory to disk instead.
-            "--disable-dev-shm-usage",
-            "--window-size=1280,900",
-            f"--load-extension={STEALTH_EXT}",
-            start_url,
-        ],
-        env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        flags, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
     )
 
-    # Wait for CDP to be ready (Chromium may fork, so check CDP not PID)
+    # Wait for CDP to be ready
     for _ in range(10):
         time.sleep(1)
         try:
