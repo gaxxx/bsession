@@ -127,6 +127,14 @@ fi
 
 # ── start container ─────────────────────────────────────────────────
 if [[ "$DO_CONTAINER" == "1" ]]; then
+    # Prefer the prebuilt multi-arch image from ghcr.io (no local build).
+    # Fall back to building locally only if the pull fails (e.g. offline / private).
+    if BSESSION_WORKSPACE="$WORKSPACE" docker compose -f "$SOURCE/docker-compose.yml" pull 2>/dev/null; then
+        info "Pulled prebuilt image from ghcr.io"
+    else
+        warn "Could not pull prebuilt image; building locally (slower)"
+        BSESSION_WORKSPACE="$WORKSPACE" docker compose -f "$SOURCE/docker-compose.yml" build
+    fi
     info "Starting container (BSESSION_WORKSPACE=$WORKSPACE)"
     BSESSION_WORKSPACE="$WORKSPACE" docker compose -f "$SOURCE/docker-compose.yml" up -d
 fi
