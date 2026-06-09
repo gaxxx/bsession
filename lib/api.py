@@ -23,6 +23,7 @@ from urllib.parse import urlparse, parse_qs
 sys.path.insert(0, "/app")
 from lib.browser import start_chrome, stop_chrome, chrome_alive, capture_screenshot
 from lib.captcha import find_captcha_bounds, capture_captcha_screenshot
+from lib import state
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -94,10 +95,13 @@ class Handler(BaseHTTPRequestHandler):
             self._json_response(404, {"error": "not found"})
 
     def _resolve_screenshot_port(self, parsed) -> int | None:
-        """Resolve CDP port from ?port= query param. Returns None if missing."""
+        """Resolve CDP port from ?port= or ?profile= query param. None if neither."""
         qs = parse_qs(parsed.query)
         if "port" in qs:
             return int(qs["port"][0])
+        if "profile" in qs:
+            row = state.get_chrome(qs["profile"][0])  # (port, pid) or None
+            return int(row[0]) if row else None
         return None
 
     def do_POST(self):
