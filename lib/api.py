@@ -26,6 +26,28 @@ from lib.captcha import find_captcha_bounds, capture_captcha_screenshot
 from lib import state
 
 
+def _cli_argv(argv):
+    """argv list to run lib.cli as a subprocess (never shell=True)."""
+    return ["python3", "-m", "lib.cli", *[str(a) for a in argv]]
+
+
+def _stage_form(form):
+    """Stage a posted form under the staging dir; return its absolute path.
+
+    skill_id/rel come from the network, so the resolved path is checked to
+    stay under the staging dir (no `..` traversal)."""
+    base = os.environ.get("BSESSION_STAGING_DIR", "/workspace/.bsession-staging")
+    skill_id = form["skill_id"]
+    rel = form["rel"].lstrip("/")
+    dest = os.path.realpath(os.path.join(base, skill_id, rel))
+    if not dest.startswith(os.path.realpath(base) + os.sep):
+        raise ValueError(f"path traversal attempt: {form['skill_id']}/{form['rel']}")
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    with open(dest, "w") as f:
+        f.write(form["content"])
+    return dest
+
+
 class Handler(BaseHTTPRequestHandler):
     def _json_response(self, status, data):
         self.send_response(status)
@@ -190,6 +212,26 @@ class Handler(BaseHTTPRequestHandler):
                     capture_output=True, text=True, timeout=30,
                 )
                 self._json_response(200, {"snapshot": snap.stdout})
+
+            elif self.path == "/cli":
+                argv = body.get("argv", [])
+                if not isinstance(argv, list):
+                    self._json_response(400, {"error": "argv must be a list"})
+                    return
+                env = os.environ.copy()
+                if body.get("profile"):
+                    env["BSESSION_PROFILE"] = body["profile"]
+                if body.get("form"):
+                    env["BSESSION_FORM"] = _stage_form(body["form"])
+                result = subprocess.run(
+                    _cli_argv(argv), cwd="/app", env=env,
+                    capture_output=True, text=True, timeout=300,
+                )
+                self._json_response(200, {
+                    "stdout": result.stdout,
+                    "stderr": result.stderr,
+                    "code": result.returncode,
+                })
 
             else:
                 self._json_response(404, {"error": "not found"})

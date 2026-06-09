@@ -62,6 +62,48 @@ def test_resolve_port_unknown_profile_returns_none(tmp_state="/tmp/bs-test-state
         os.environ.pop("BSESSION_STATE_DIR", None)
 
 
+def test_stage_form_writes_file_and_returns_env():
+    import shutil
+    base = "/tmp/bs-stage-test"
+    os.environ["BSESSION_STAGING_DIR"] = base
+    shutil.rmtree(base, ignore_errors=True)
+    try:
+        from lib import api
+        env_form = api._stage_form({
+            "skill_id": "uscis-check",
+            "rel": "forms/wang-jue-ead.toml",
+            "content": 'person = "x"\nreceipt_number = "WAC1"\n',
+        })
+        assert env_form == f"{os.path.realpath(base)}/uscis-check/forms/wang-jue-ead.toml"
+        with open(env_form) as f:
+            assert "WAC1" in f.read()
+    finally:
+        shutil.rmtree(base, ignore_errors=True)
+        os.environ.pop("BSESSION_STAGING_DIR", None)
+
+
+def test_stage_form_rejects_traversal():
+    os.environ["BSESSION_STAGING_DIR"] = "/tmp/bs-stage-trav"
+    try:
+        from lib import api
+        raised = False
+        try:
+            api._stage_form({"skill_id": "../../etc", "rel": "x", "content": "pwn"})
+        except ValueError:
+            raised = True
+        assert raised, "expected ValueError on path traversal"
+    finally:
+        os.environ.pop("BSESSION_STAGING_DIR", None)
+
+
+def test_cli_argv_is_list_not_shell():
+    from lib import api
+    argv = api._cli_argv(["nav", "https://x;rm -rf /", "--wait", "1"])
+    assert argv[0:3] == ["python3", "-m", "lib.cli"]
+    assert "https://x;rm -rf /" in argv   # passed as one element, not split
+    assert all(isinstance(a, str) for a in argv)
+
+
 def _run():
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     bad = 0
