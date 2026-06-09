@@ -50,6 +50,8 @@ try:
 except json.JSONDecodeError:
     sys.stderr.write("bsession: unexpected API response: " + raw[:200] + "\n")
     sys.exit(1)
+if "error" in r:
+    sys.stderr.write("bsession: " + str(r["error"]) + "\n")
 sys.stdout.write(r.get("stdout", ""))
 sys.stderr.write(r.get("stderr", ""))
 sys.exit(int(r.get("code", 1)))

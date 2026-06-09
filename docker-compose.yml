@@ -13,6 +13,9 @@ services:
       - .env
     environment:
       - DISPLAY=:99
+      # Pass the API port through so api.py inside the container matches the
+      # published port mapping above (both default to 18000).
+      - BSESSION_API_PORT
     shm_size: 1gb
     networks:
       - bsession

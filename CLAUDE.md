@@ -159,6 +159,7 @@ POST /browse       {"port": 9222, "url": "...", "wait": 5}
 POST /click        {"port": 9222, "ref": "e5"}
 POST /fill         {"port": 9222, "ref": "e3", "value": "..."}
 POST /snapshot     {"port": 9222}
+POST /cli          {"profile": "...", "argv": [...], "form": {...}}  — run lib.cli for a profile
 GET  /screenshot?port=9222           — PNG of active tab
 GET  /captcha/screenshot?port=9222   — PNG of captcha bounding box
 GET  /captcha/bounds?port=9222       — captcha bounding box JSON

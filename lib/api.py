@@ -7,6 +7,7 @@ Endpoints:
   POST /ab                {"port": 9222, "command": "snapshot", "args": [...]}
   POST /chrome/{start,stop,alive}
   POST /{browse,click,fill,snapshot}
+  POST /cli               {"profile": "...", "argv": [...], "form": {...}}
   GET  /screenshot?port=9222
   GET  /captcha/screenshot?port=9222
   GET  /captcha/bounds?port=9222
