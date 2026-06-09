@@ -148,3 +148,32 @@ Available in `templates/`:
 - `form.toml.template`
 
 Each is heavily commented; fill in the bracketed placeholders.
+
+## CAPTCHA human hand-off (channel-agnostic)
+
+The cloak backend auto-resolves non-interactive Turnstile with no human needed.
+When a real challenge appears, bsession provides the image; the *consumer*
+supplies the human channel and feeds the answer back. Contract:
+
+1. Detect: `bsession captcha bounds` (exit 1 = no captcha → proceed).
+2. Capture: `bsession captcha screenshot --output <png>` (or
+   `GET $BSESSION_API_URL/captcha/screenshot?profile=<p>` for bytes).
+3. Classify by looking at the image:
+   - **Text-entry** (distorted characters you can type) → out-of-band channel.
+   - **Click-grid / interactive** (reCAPTCHA tiles, hCaptcha) → VNC hand-off
+     (`$BSESSION_VNC_URL`, default `http://localhost:6080/vnc.html`).
+4. Out-of-band answer: send the PNG to the human over your channel, get the
+   typed answer, then `bsession fill <ref> <answer>` and submit.
+5. Fallbacks: wrong answer → retry up to 2×; grid/interactive or timeout →
+   send the VNC URL for manual solve.
+
+### Reference channel: Telegram (persona)
+
+```bash
+PNG=/tmp/captcha.png
+bsession captcha screenshot --output "$PNG"
+bun run bin/tg-send-photo.ts "$TELEGRAM_CHAT_ID" "$PNG" "Solve this captcha; reply with the text."
+# poll bin/tg-pull.ts until a reply arrives (timeout ~5 min):
+ANSWER=$(bun run bin/tg-pull.ts | python3 -c 'import json,sys; m=json.load(sys.stdin); print(m[-1]["text"] if m else "")')
+[ -n "$ANSWER" ] && bsession fill "$REF" "$ANSWER"
+```
