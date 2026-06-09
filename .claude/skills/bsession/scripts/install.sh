@@ -73,7 +73,12 @@ docker info >/dev/null 2>&1    || fail "Docker daemon not running."
 info "Workspace: $WORKSPACE"
 mkdir -p "$WORKSPACE"
 
-# ── .env (vnc password) ─────────────────────────────────────────────
+# ── .env (docker compose env_file requires it to exist) ─────────────
+if [[ ! -f "$SOURCE/.env" ]]; then
+    cp "$SOURCE/.env.example" "$SOURCE/.env"
+    info "Created .env from .env.example"
+fi
+
 if [[ -n "$VNC_PASSWORD" ]]; then
     grep -q '^VNC_PASSWORD=' "$SOURCE/.env" 2>/dev/null \
         && sed -i.bak "s|^VNC_PASSWORD=.*|VNC_PASSWORD=$VNC_PASSWORD|" "$SOURCE/.env" \
