@@ -9,11 +9,18 @@ RUN apt-get update && apt-get install -y \
     fonts-liberation libappindicator3-1 xdg-utils \
     xvfb x11vnc fluxbox xdotool \
     novnc websockify curl \
-    python3 \
+    python3 python3-pip \
     && rm -rf /var/lib/apt/lists/*
 
 # Install agent-browser globally
 RUN npm install -g agent-browser
+
+# Install cloakbrowser (source-patched stealth Chromium) and pre-bake its
+# binary into the image so the cloak backend launches instantly at runtime.
+# Auto-update is disabled so launches never make network calls.
+ENV CLOAKBROWSER_AUTO_UPDATE=false
+RUN pip3 install --no-cache-dir --break-system-packages cloakbrowser \
+    && python3 -m cloakbrowser install
 
 WORKDIR /app
 
