@@ -30,7 +30,7 @@ exposes browser primitives — Claude/run.sh chains them to drive automation.
 │   ├── bypass/cloudflare.py # Cloudflare detection + bypass helpers
 │   ├── notify.py            # webhook helper
 │   ├── captcha.py           # captcha bounding box / screenshot
-│   └── api.py               # HTTP API on container port 8080
+│   └── api.py               # HTTP API on container port 18000
 ├── Dockerfile
 ├── docker-compose.yml
 ├── entrypoint.sh
@@ -143,13 +143,13 @@ docker compose up -d
   → entrypoint.sh:
     1. mkdir /workspace
     2. Xvfb :99, Fluxbox, x11vnc, noVNC
-    3. python3 /app/lib/api.py (port 8080)
+    3. python3 /app/lib/api.py (port 18000)
     4. tail -f /dev/null
 ```
 
 Long-running container; Chrome processes started on demand by `bsession`.
 
-## HTTP API (port 8080)
+## HTTP API (port 18000)
 
 ```
 POST /ab           {"port": 9222, "command": "snapshot", "args": [...]}
@@ -159,6 +159,7 @@ POST /browse       {"port": 9222, "url": "...", "wait": 5}
 POST /click        {"port": 9222, "ref": "e5"}
 POST /fill         {"port": 9222, "ref": "e3", "value": "..."}
 POST /snapshot     {"port": 9222}
+POST /cli          {"profile": "...", "argv": [...], "form": {...}}  — run lib.cli for a profile
 GET  /screenshot?port=9222           — PNG of active tab
 GET  /captcha/screenshot?port=9222   — PNG of captcha bounding box
 GET  /captcha/bounds?port=9222       — captcha bounding box JSON

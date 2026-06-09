@@ -1,0 +1,13 @@
+{
+  "name": "bsession-marketplace",
+  "owner": {
+    "name": "gaxxx"
+  },
+  "plugins": [
+    {
+      "name": "bsession",
+      "source": "./plugin",
+      "description": "Drive the bsession headed-browser engine over HTTP; build Cloudflare/CAPTCHA-aware browser skills."
+    }
+  ]
+}

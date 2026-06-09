@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# bsession HTTP shim — forwards CLI commands to the bsession API over HTTP.
+# Mirrors the host wrapper's form staging, but transports content (no docker exec).
+set -euo pipefail
+
+API="${BSESSION_API_URL:-http://host.docker.internal:18000}"
+
+# Build the request payload entirely in python3 (compact JSON) from argv + env.
+payload=$(BS_PROFILE="${BSESSION_PROFILE:-}" BS_FORM="${BSESSION_FORM:-}" python3 - "$@" <<'PY'
+import json, os, sys
+
+argv = sys.argv[1:]
+# Profile: prefer BSESSION_PROFILE env; fall back to --profile <name> in argv.
+profile = os.environ.get("BS_PROFILE") or None
+if not profile:
+    for i, a in enumerate(argv):
+        if a == "--profile" and i + 1 < len(argv):
+            profile = argv[i + 1]
+            break
+
+form = None
+fpath = os.environ.get("BS_FORM") or ""
+if fpath and os.path.isfile(fpath):
+    absf = os.path.abspath(fpath)
+    parent = os.path.dirname(absf)
+    if os.path.basename(parent) == "forms":
+        skill_id = os.path.basename(os.path.dirname(parent))
+        rel = "forms/" + os.path.basename(absf)
+    else:
+        skill_id = os.path.basename(parent)
+        rel = os.path.basename(absf)
+    with open(absf) as f:
+        form = {"skill_id": skill_id, "rel": rel, "content": f.read()}
+
+print(json.dumps({"argv": argv, "profile": profile, "form": form},
+                 separators=(",", ":")))
+PY
+)
+
+resp=$(curl -s -X POST "$API/cli" -H 'Content-Type: application/json' -d "$payload") || {
+  echo "bsession: API unreachable at $API" >&2; exit 3
+}
+[ -z "$resp" ] && { echo "bsession: empty response from $API" >&2; exit 3; }
+
+BS_RESP="$resp" python3 -c '
+import json, os, sys
+raw = os.environ["BS_RESP"]
+try:
+    r = json.loads(raw)
+except json.JSONDecodeError:
+    sys.stderr.write("bsession: unexpected API response: " + raw[:200] + "\n")
+    sys.exit(1)
+if "error" in r:
+    sys.stderr.write("bsession: " + str(r["error"]) + "\n")
+sys.stdout.write(r.get("stdout", ""))
+sys.stderr.write(r.get("stderr", ""))
+sys.exit(int(r.get("code", 1)))
+'
