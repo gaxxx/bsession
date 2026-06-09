@@ -27,6 +27,40 @@ bsession trades efficiency for survival on protected sites. Don't pay that cost 
 
 Primitives (a CLI), conventions (skill dir layout), and templates. You author the per-skill `SKILL.md`, `run.sh`, and `forms/*.toml`.
 
+## Setup
+
+Two things must be in place before any `bsession` primitive works:
+
+**1. The `bsession` command.** This plugin puts a `bsession` shim on the Bash
+`PATH` when enabled (it forwards CLI commands to the engine's HTTP API). If
+`command -v bsession` is empty, the plugin isn't enabled — enable it in your
+`settings.json` (see the plugin README / `docs/bsession-integration.md`).
+
+**2. The bsession engine (a Docker container) must be running.** Primitives talk
+to its HTTP API at `$BSESSION_API_URL` (default `http://host.docker.internal:18000`
+inside a container, `http://localhost:18000` on a host). Always health-check
+first, and bootstrap if it's down:
+
+```bash
+API="${BSESSION_API_URL:-http://localhost:18000}"
+if curl -fsS "$API/health" >/dev/null 2>&1; then
+  echo "bsession engine: up"
+elif command -v docker >/dev/null 2>&1; then
+  # On a host with Docker — build + start it (one-time per host; long-running)
+  git clone https://github.com/gaxxx/bsession ~/.bsession-src 2>/dev/null \
+    || git -C ~/.bsession-src pull --ff-only
+  ( cd ~/.bsession-src && docker compose up -d --build )
+  for i in $(seq 1 30); do curl -fsS "$API/health" >/dev/null 2>&1 && break; sleep 2; done
+else
+  echo "bsession engine is down and Docker isn't available here." >&2
+  echo "Start it on the host:  cd <bsession repo> && docker compose up -d --build" >&2
+fi
+```
+
+Note: a containerized consumer **without Docker access** (e.g. the persona
+assistant) can't start the engine itself — it must be running on the host. The
+container is long-running; this is a one-time setup per host.
+
 ## Skill anatomy
 
 A bsession skill is a directory under `.claude/skills/<name>/`:
@@ -111,34 +145,28 @@ bsession notify <url> --json '...'         # POST to webhook
 
 If a skill stalls on Cloudflare or asks for human interaction, the user opens http://localhost:6080/vnc.html, sees the browser, solves manually. bsession polls and resumes when the challenge clears.
 
-## Setup (per machine, one-time)
+## Standalone install (without the plugin)
 
-The bsession skill itself + the bsession docker container need to be installed:
+The recommended path is the Claude Code **plugin** (see Setup above) — it ships
+this skill and puts `bsession` on PATH. If you instead want bsession directly on
+a host *without* the plugin, the host wrapper drives the container over
+`docker exec`:
 
 ```bash
-# 1. Clone the bsession repo somewhere
+# 1. Clone the repo
 git clone https://github.com/gaxxx/bsession ~/playground/bsession
 
-# 2. Install bsession command to PATH
+# 2. Put the host wrapper on PATH
 ln -s ~/playground/bsession/.claude/skills/bsession/bsession /usr/local/bin/bsession
 
-# 3. Start the container (one-time)
-cd ~/playground/bsession && docker compose up -d
+# 3. Start the container (one-time; long-running)
+cd ~/playground/bsession && docker compose up -d --build
 ```
 
-## Setup (per project, one-time)
+Verify: `bsession session list` prints `(no active sessions)` or the active profiles.
 
-```bash
-cd <your-project>
-mkdir -p .claude/skills
-
-# Pick one:
-git submodule add ../bsession/.claude/skills/bsession .claude/skills/bsession   # if both repos sibling
-ln -s ~/playground/bsession/.claude/skills/bsession .claude/skills/bsession      # symlink
-cp -r ~/playground/bsession/.claude/skills/bsession .claude/skills/              # copy (no auto-update)
-```
-
-Verify: `bsession session list` should print `(no active sessions)` (or list active profiles).
+Don't enable both the plugin and this symlink — they'd put two different
+`bsession` commands on PATH.
 
 ## Templates
 
