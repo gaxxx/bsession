@@ -10,6 +10,8 @@ exposes browser primitives — Claude/run.sh chains them to drive automation.
 
 - **Runtime**: Node 22-slim Docker image with Chromium + Python 3
 - **Browser Control**: `agent-browser` CLI (Playwright-based, talks to Chrome via CDP)
+- **Browser binary**: `cloakbrowser` (source-patched stealth Chromium) by default in
+  the container; plain Chromium as fallback. Selected via `BSESSION_BROWSER` (auto|cloak|chrome)
 - **Display**: Xvfb + Fluxbox + x11vnc + noVNC (web VNC at port 6080)
 - **bsession CLI**: Primitive browser commands; manages per-profile Chrome lifecycle
 - **State**: SQLite at `/workspace/.bsession-state/state.db` (chromes table, LRU)
@@ -114,9 +116,24 @@ bsession session forget <profile>            # close + delete profile dir
 
 ## Anti-detection
 
-- `--remote-allow-origins=*` on Chrome (needed for CDP HTTP)
-- `--disable-blink-features=AutomationControlled` removes automation banner
-- Stealth extension at `/workspace/.bsession-state/stealth-ext/` patches `navigator.webdriver`
+bsession runs one of two browser backends (`BSESSION_BROWSER`, default `auto`):
+
+**cloak backend (default in container)** — `cloakbrowser`, a Chromium with
+source-level stealth patches (canvas/WebGL/audio/fonts/GPU + automation-signal
+removal) compiled in. No stealth extension or `AutomationControlled` flag is used
+(cloak owns those, and loading an unpacked extension is itself a tell). Each
+profile gets a stable `--fingerprint=<seed>` derived from its name, so the device
+fingerprint persists across restarts the same way its cookies do. GPU/screen/window
+are auto-generated from the seed, so we don't pin `--disable-gpu` or `--window-size`.
+Binary path comes from `cloakbrowser.download.ensure_binary()`; pre-baked at image
+build time. `CLOAKBROWSER_AUTO_UPDATE=false` keeps launches offline-stable.
+
+**chrome backend (fallback / native)** — plain Chromium with:
+- `--disable-blink-features=AutomationControlled` removes the automation banner
+- Stealth extension at `STEALTH_EXT_DIR` patches `navigator.webdriver`
+
+Both backends:
+- `--remote-allow-origins=*` (needed for CDP HTTP)
 - Persistent profile per skill — Cloudflare cookies survive container restarts
 
 ## Container lifecycle
