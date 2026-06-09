@@ -43,8 +43,9 @@ echo "  bsession session list"
 echo ""
 
 # Start bsession HTTP API (for container-to-container access)
+API_PORT="${BSESSION_API_PORT:-18000}"
 python3 /app/lib/api.py &
-echo " API server running on port 8080"
+echo " API server running on port ${API_PORT}"
 echo ""
 
 # Keep container alive

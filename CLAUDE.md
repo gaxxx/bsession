@@ -30,7 +30,7 @@ exposes browser primitives — Claude/run.sh chains them to drive automation.
 │   ├── bypass/cloudflare.py # Cloudflare detection + bypass helpers
 │   ├── notify.py            # webhook helper
 │   ├── captcha.py           # captcha bounding box / screenshot
-│   └── api.py               # HTTP API on container port 8080
+│   └── api.py               # HTTP API on container port 18000
 ├── Dockerfile
 ├── docker-compose.yml
 ├── entrypoint.sh
@@ -143,13 +143,13 @@ docker compose up -d
   → entrypoint.sh:
     1. mkdir /workspace
     2. Xvfb :99, Fluxbox, x11vnc, noVNC
-    3. python3 /app/lib/api.py (port 8080)
+    3. python3 /app/lib/api.py (port 18000)
     4. tail -f /dev/null
 ```
 
 Long-running container; Chrome processes started on demand by `bsession`.
 
-## HTTP API (port 8080)
+## HTTP API (port 18000)
 
 ```
 POST /ab           {"port": 9222, "command": "snapshot", "args": [...]}

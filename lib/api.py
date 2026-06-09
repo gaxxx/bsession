@@ -14,6 +14,7 @@ Endpoints:
 """
 
 import json
+import os
 import subprocess
 import sys
 from http.server import HTTPServer, BaseHTTPRequestHandler
@@ -196,8 +197,12 @@ class Handler(BaseHTTPRequestHandler):
         pass  # suppress default logging
 
 
+def _api_port():
+    return int(os.environ.get("BSESSION_API_PORT", "18000"))
+
+
 def main():
-    port = 8080
+    port = _api_port()
     server = HTTPServer(("0.0.0.0", port), Handler)
     print(f"bsession API listening on port {port}")
     server.serve_forever()

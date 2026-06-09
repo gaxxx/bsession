@@ -6,7 +6,7 @@ services:
     ports:
       - "5900:5900"   # VNC
       - "6080:6080"   # noVNC web
-      - "8080:8080"   # bsession API
+      - "${BSESSION_API_PORT:-18000}:${BSESSION_API_PORT:-18000}" # bsession API
     volumes:
       - ${BSESSION_WORKSPACE:-${HOME}/.bsession/workspace}:/workspace
     env_file:
