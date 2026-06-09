@@ -6,7 +6,6 @@ on:
     paths:
       - Dockerfile
       - entrypoint.sh
-      - session.py
       - lib/**
   workflow_dispatch:
 

@@ -36,9 +36,10 @@ curl -fsSL .../install.sh | bash -s -- --workspace ~/work/bsession
 The installer:
 
 1. Clones the repo to `~/.bsession/source/` (re-running updates via `git pull`)
-2. Starts the Docker container (Chromium + agent-browser + VNC + noVNC)
-3. Symlinks `bsession` to `~/.local/bin/bsession`
-4. Symlinks the bsession skill to `~/.claude/skills/bsession/` so Claude Code can invoke it from any project
+2. Creates `.env` from `.env.example` if missing (all values optional)
+3. **Pulls the prebuilt multi-arch image** `ghcr.io/gaxxx/bsession:latest` (built in CI for `linux/amd64` + `linux/arm64`) and starts the container (Chromium + agent-browser + VNC + noVNC) — no local build. Falls back to `docker compose build` only if the pull fails (offline / private registry).
+4. Symlinks `bsession` to `~/.local/bin/bsession`
+5. Symlinks the bsession skill to `~/.claude/skills/bsession/` so Claude Code can invoke it from any project
 
 ### Manual install
 
@@ -47,6 +48,28 @@ git clone https://github.com/gaxxx/bsession.git ~/playground/bsession
 cd ~/playground/bsession
 bash .claude/skills/bsession/scripts/install.sh
 ```
+
+### As a Claude Code plugin
+
+bsession is also a Claude Code plugin — enable it and the `bsession` command + skill load automatically in any Claude Code session (interactive or headless `claude -p`), with no symlinking. The plugin's shim drives the container over its HTTP API, so the **engine still needs to be running** (see One-line install above; a SessionStart hook reminds you if it isn't).
+
+```bash
+claude plugin marketplace add gaxxx/bsession
+claude plugin install bsession@bsession-marketplace
+```
+
+Or declare it per-project in `.claude/settings.json` (auto-loads each session, no install step):
+
+```json
+{
+  "extraKnownMarketplaces": {
+    "bsession-marketplace": { "source": { "source": "github", "repo": "gaxxx/bsession" } }
+  },
+  "enabledPlugins": { "bsession@bsession-marketplace": true }
+}
+```
+
+The shim talks to `$BSESSION_API_URL` (default `http://host.docker.internal:18000`). This is how another container (e.g. a Telegram assistant) drives bsession over the network without a Docker socket — see [`docs/superpowers/specs/2026-06-09-persona-bsession-integration-design.md`](docs/superpowers/specs/2026-06-09-persona-bsession-integration-design.md).
 
 ### Uninstall
 
