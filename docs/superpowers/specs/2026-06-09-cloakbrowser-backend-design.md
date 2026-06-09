@@ -151,9 +151,19 @@ form keys. Not in this change.
   fingerprint-detection page confirm `navigator.webdriver` is clean and the
   device fingerprint is **stable across a restart** of the same profile.
 
-## Open verification items
+## Verification items (resolved during implementation)
 
-1. cloak binary accepts `--fingerprint=<seed>` as a raw launch arg.
-2. `--disable-gpu` does not degrade cloak's WebGL/GPU fingerprint under Xvfb.
-3. How the `cloakbrowser` package exposes its cached binary path for the
-   resolver (package API vs. `python -m cloakbrowser info`).
+1. **`--fingerprint=<seed>` confirmed.** cloak's `config.get_default_stealth_args()`
+   passes `--fingerprint=<random>` + `--fingerprint-platform=windows|macos` as raw
+   args, so the binary accepts them. We pass a *deterministic* per-profile seed
+   instead of cloak's random one.
+2. **`--disable-gpu` dropped on cloak.** cloak auto-generates the GPU
+   vendor/renderer from the seed and warns that forced software GL
+   (`--enable-unsafe-swiftshader`) yields a detectable renderer, so the cloak
+   branch omits `--disable-gpu` and `--window-size` (screen/window also seed-derived).
+3. **Binary path:** `cloakbrowser.download.ensure_binary()` (downloads if needed;
+   cache at `~/.cloakbrowser/chromium-<ver>/chrome`). Pre-baked in the image.
+
+Verified end to end: container build bakes the arm64 binary, `resolve_browser()`
+returns the cloak backend, and a Reddit login completed with no Cloudflare/CAPTCHA
+challenge (`/api/me.json` → the expected account).
