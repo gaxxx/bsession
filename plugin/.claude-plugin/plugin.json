@@ -2,5 +2,7 @@
   "name": "bsession",
   "version": "0.1.0",
   "description": "Drive the bsession headed-browser engine over HTTP; build Cloudflare/CAPTCHA-aware browser skills.",
-  "author": "gaxxx"
+  "author": {
+    "name": "gaxxx"
+  }
 }

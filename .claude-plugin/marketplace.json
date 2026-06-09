@@ -6,7 +6,7 @@
   "plugins": [
     {
       "name": "bsession",
-      "source": ".",
+      "source": "./plugin",
       "description": "Drive the bsession headed-browser engine over HTTP; build Cloudflare/CAPTCHA-aware browser skills."
     }
   ]
