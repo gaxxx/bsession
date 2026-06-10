@@ -121,8 +121,14 @@ def cmd_find(args, ctx):
         print(ref)
 
 
+def _scroll_into_view(profile, ref):
+    # Off-screen elements silently drop click/fill events. Pre-scroll into view.
+    ab.run_quiet(profile, "scrollintoview", ref)
+
+
 def cmd_click(args, ctx):
     ensure_chrome(ctx.profile)
+    _scroll_into_view(ctx.profile, args.ref)
     ab.run_quiet(ctx.profile, "click", args.ref)
     if args.wait > 0:
         time.sleep(args.wait)
@@ -130,16 +136,19 @@ def cmd_click(args, ctx):
 
 def cmd_fill(args, ctx):
     ensure_chrome(ctx.profile)
+    _scroll_into_view(ctx.profile, args.ref)
     ab.run_quiet(ctx.profile, "fill", args.ref, args.value)
 
 
 def cmd_type(args, ctx):
     ensure_chrome(ctx.profile)
+    _scroll_into_view(ctx.profile, args.ref)
     ab.run_quiet(ctx.profile, "type", args.ref, args.value)
 
 
 def cmd_select(args, ctx):
     ensure_chrome(ctx.profile)
+    _scroll_into_view(ctx.profile, args.ref)
     ab.run_quiet(ctx.profile, "select", args.ref, args.value)
 
 
