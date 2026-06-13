@@ -249,6 +249,12 @@ def _api_port():
 
 
 def main():
+    from lib import reaper
+    if reaper.IDLE_TTL > 0:
+        import threading
+        threading.Thread(target=reaper.run_loop, daemon=True).start()
+        print(f"idle reaper on (BSESSION_IDLE_TTL={reaper.IDLE_TTL}s)")
+
     port = _api_port()
     server = HTTPServer(("0.0.0.0", port), Handler)
     print(f"bsession API listening on port {port}")

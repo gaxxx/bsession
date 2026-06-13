@@ -55,6 +55,7 @@ def ensure_chrome(profile):
             v_row = state.get_chrome(victim)
             if v_row:
                 stop_chrome(v_row[0])
+            ab.close_session(victim)
             state.remove_chrome(victim)
             print(f"[bsession] evicted LRU profile: {victim}", file=sys.stderr)
 
@@ -325,6 +326,7 @@ def cmd_session_close(args, _ctx):
         print(f"no such profile: {profile}", file=sys.stderr)
         sys.exit(1)
     stop_chrome(row[0])
+    ab.close_session(profile)
     state.remove_chrome(profile)
     print(f"closed {profile}")
 
@@ -335,6 +337,7 @@ def cmd_session_forget(args, _ctx):
     if row:
         stop_chrome(row[0])
         state.remove_chrome(profile)
+    ab.close_session(profile)
     pdir = _profile_dir(profile)
     if os.path.isdir(pdir):
         import shutil

@@ -104,6 +104,7 @@ bsession session forget <profile>            # close + delete profile dir
 ## Session model
 
 - One Chrome process per profile (LRU evicted, cap = `BSESSION_MAX_PROFILES`, default 5)
+- Idle reaper (thread in api.py) closes Chromes idle > `BSESSION_IDLE_TTL` (default 1800s, 0 disables) and their agent-browser session daemons — cookies/fingerprint persist on disk, so the next command just relaunches Chrome (~2s)
 - Each profile has its own user-data-dir at `/workspace/.bsession-state/profiles/<profile>/`
 - agent-browser is invoked with `--session bs-<profile>` so profiles don't interfere
 - Chrome started with `--remote-allow-origins=*` so CDP HTTP endpoints work

@@ -16,6 +16,9 @@ services:
       # Pass the API port through so api.py inside the container matches the
       # published port mapping above (both default to 18000).
       - BSESSION_API_PORT
+      # Seconds of idleness before the reaper closes a profile's Chrome
+      # (cookies persist on disk; relaunched on next use). 0 disables.
+      - BSESSION_IDLE_TTL
     shm_size: 1gb
     networks:
       - bsession

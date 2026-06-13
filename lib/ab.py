@@ -30,6 +30,18 @@ def run(profile, *args, capture=True, timeout=120):
     return (result.stdout or "").strip()
 
 
+def close_session(profile):
+    """Close profile's agent-browser session, terminating its daemon.
+
+    Each session spawns a long-lived node daemon; without an explicit
+    close they accumulate (and leak memory) after their Chrome is gone.
+    """
+    subprocess.run(
+        ["agent-browser", "--session", session_name(profile), "close"],
+        capture_output=True, timeout=10,
+    )
+
+
 def run_quiet(profile, *args, timeout=120):
     """Run agent-browser command, discard output."""
     subprocess.run(
