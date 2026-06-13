@@ -14,11 +14,21 @@ def session_name(profile):
 
 
 def bind(profile, port):
-    """Pin agent-browser session for `profile` to `port`. Idempotent."""
-    subprocess.run(
-        ["agent-browser", "--session", session_name(profile), "connect", str(port)],
-        capture_output=True, timeout=10,
-    )
+    """Pin agent-browser session for `profile` to `port`. Idempotent.
+
+    A slow `connect` (e.g. a busy/unresponsive Chrome) must not crash the
+    caller with a raw TimeoutExpired traceback — bind is recoverable, and
+    the next agent-browser command surfaces a real problem if the session
+    truly never connected. So we warn and move on instead of raising."""
+    import sys
+    try:
+        subprocess.run(
+            ["agent-browser", "--session", session_name(profile), "connect", str(port)],
+            capture_output=True, timeout=10,
+        )
+    except subprocess.TimeoutExpired:
+        print(f"[bsession] warning: 'connect {port}' for {profile} timed out; "
+              f"continuing", file=sys.stderr)
 
 
 def run(profile, *args, capture=True, timeout=120):
