@@ -135,16 +135,34 @@ def cmd_click(args, ctx):
         time.sleep(args.wait)
 
 
+def _resolve_input_value(value, value_env):
+    """Value to fill/type: positional `value`, else env var `value_env`.
+
+    Lets callers keep secrets (passwords) out of argv, shell history, and
+    logs by passing them through an env var. Note: the value still reaches
+    the underlying agent-browser process via argv — this closes the
+    bsession-layer exposure, not that final transient one."""
+    if value is not None:
+        return value
+    if value_env:
+        if value_env not in os.environ:
+            print(f"--value-env {value_env} is not set in the environment", file=sys.stderr)
+            sys.exit(2)
+        return os.environ[value_env]
+    print("provide a value or --value-env <ENVVAR>", file=sys.stderr)
+    sys.exit(2)
+
+
 def cmd_fill(args, ctx):
     ensure_chrome(ctx.profile)
     _scroll_into_view(ctx.profile, args.ref)
-    ab.run_quiet(ctx.profile, "fill", args.ref, args.value)
+    ab.run_quiet(ctx.profile, "fill", args.ref, _resolve_input_value(args.value, args.value_env))
 
 
 def cmd_type(args, ctx):
     ensure_chrome(ctx.profile)
     _scroll_into_view(ctx.profile, args.ref)
-    ab.run_quiet(ctx.profile, "type", args.ref, args.value)
+    ab.run_quiet(ctx.profile, "type", args.ref, _resolve_input_value(args.value, args.value_env))
 
 
 def cmd_select(args, ctx):
@@ -380,8 +398,8 @@ def build_parser():
 
     f = sub.add_parser("find"); f.add_argument("pattern"); f.add_argument("--all", action="store_true")
     c = sub.add_parser("click"); c.add_argument("ref"); c.add_argument("--wait", type=float, default=1.0)
-    fi = sub.add_parser("fill"); fi.add_argument("ref"); fi.add_argument("value")
-    t = sub.add_parser("type"); t.add_argument("ref"); t.add_argument("value")
+    fi = sub.add_parser("fill"); fi.add_argument("ref"); fi.add_argument("value", nargs="?"); fi.add_argument("--value-env", help="read value from this env var instead (keeps secrets out of argv/logs)")
+    t = sub.add_parser("type"); t.add_argument("ref"); t.add_argument("value", nargs="?"); t.add_argument("--value-env", help="read value from this env var instead")
     se = sub.add_parser("select"); se.add_argument("ref"); se.add_argument("value")
 
     e = sub.add_parser("extract")
