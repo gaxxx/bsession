@@ -46,9 +46,15 @@ def resolve(form_path=None, profile_override=None):
         form_path = os.environ.get("BSESSION_FORM")
 
     if not form_path:
+        # No form: still honor an explicit profile (arg or BSESSION_PROFILE),
+        # matching documented behavior. Without it, every form-less call would
+        # collide on the single __scratch__ Chrome.
         return FormContext(
             form_path=None, skill_id=SCRATCH, form_id=SCRATCH,
-            profile=profile_override or SCRATCH, fields={},
+            profile=(profile_override
+                     or os.environ.get("BSESSION_PROFILE")
+                     or SCRATCH),
+            fields={},
         )
 
     if not os.path.isfile(form_path):
